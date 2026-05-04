@@ -147,9 +147,14 @@ gateway.exe [--config <path>] [--mock | --replay <file> | --record <file>] [--li
   },
   "replay": {
     "speed": "realtime"   // "realtime" | "fast" | "instant"
+  },
+  "records": {
+    "dir": "./records"
   }
 }
 ```
+
+> **パス解決**: `logging.dir` / `records.dir` などの相対パスは **EXE が置かれているディレクトリ基準**で解決する(cwd 依存にしない)。詳細は §4.4 ポータブル運用を参照。
 
 設定変更は `/admin` 経由が一次手段。`config.json` 直編集は再起動が必要なケースとして許容するが推奨ではない。
 
@@ -231,8 +236,9 @@ amb-rc:state:lap.collapsed        → ラップ表示の折り畳み状態(boole
 ### 4.1 手順(リリース時)
 1. `cd web && npm ci && npm run build`
 2. ビルド成果物 `web/dist/` を `gateway/internal/webassets/dist/` へコピー(`Makefile` か `scripts/build.ps1` で吸収)
-3. `cd gateway && go build -trimpath -ldflags="-s -w" -o ../dist/gateway.exe ./cmd/gateway`
-4. 配布物: `dist/gateway.exe` + サンプル `config.json`
+3. `cd gateway && go build -trimpath -ldflags="-s -w -X main.version=${TAG}" -o ../dist/AMB_RC_Lap_Timer/gateway.exe ./cmd/gateway`
+4. ZIP 化: `dist/AMB_RC_Lap_Timer/` 配下に `gateway.exe` / `config.example.json` / `README.txt` / 空の `logs/` `records/` を配置 → `AMB_RC_Lap_Timer-vX.Y.Z.zip` にアーカイブ
+5. **配布物: `AMB_RC_Lap_Timer-vX.Y.Z.zip` 単一ファイル**(USB に展開して使う、§4.4 参照)
 
 ### 4.2 `.gitignore` 方針
 - `web/node_modules/` / `web/dist/` をコミットしない
@@ -244,6 +250,78 @@ amb-rc:state:lap.collapsed        → ラップ表示の折り畳み状態(boole
 - 第一ターゲット: **Windows 10/11 amd64**(8.1 はベストエフォート)
 - ビルドは Linux/macOS からクロスコンパイル可能(`GOOS=windows GOARCH=amd64 go build ...`)
 - 開発時は各自の OS で動作すること(Go と Node があれば動く)
+
+### 4.4 ポータブル運用(USB 配布)
+
+現地 Windows PC に配布する手段は **USB メモリへの ZIP 展開**を一次手段とする。インストール・管理者権限・ネットワーク導入を一切要求しない。
+
+#### 4.4.1 配布物のディレクトリレイアウト
+
+ZIP を展開すると以下の構成になる(USB ルート直下に置く想定):
+
+```
+USB:\AMB_RC_Lap_Timer\
+├── gateway.exe              # 実行ファイル(単一バイナリ、SPA も同梱)
+├── config.json              # 編集して使う設定(初回起動時に config.example.json から複製可)
+├── config.example.json      # 設定のひな型
+├── README.txt               # 現地手順(起動 / Firewall 許可 / SmartScreen 通過)
+├── logs\                    # ローテーション出力先(EXE 起動時に自動作成)
+│   └── .gitkeep
+└── records\                 # --record の出力先(同上)
+    └── .gitkeep
+```
+
+#### 4.4.2 パス解決ルール
+
+`config.json` 内の相対パス(`logging.dir` / `records.dir` 等)は **すべて EXE が置かれているディレクトリを基準**に解決する。
+
+```go
+exe, _ := os.Executable()
+baseDir := filepath.Dir(exe)
+// "./logs" → filepath.Join(baseDir, "logs")
+```
+
+これにより:
+- USB ルート直下でもサブフォルダでも、PC のデスクトップ上に展開しても **同じ挙動**
+- cwd 依存しないため、`gateway.exe` をダブルクリックで起動しても期待通りに動作
+
+絶対パス(`C:\foo\bar`)が指定された場合はそのまま使用する。
+
+#### 4.4.3 取り外し耐性(I/O fail-soft)
+
+USB 上で動作中に媒体が抜かれることを想定し、以下の方針で書込み I/O を **fail-soft** にする。
+
+| 操作 | 失敗時の挙動 |
+|---|---|
+| `logs/*.log` への追記 | ログ書込み失敗を内部カウンタに記録し、標準出力に警告。**ゲートウェイ自体は停止しない** |
+| `records/*.bin` への追記(--record 中) | 同上。`--record` セッションは継続(再挿入時に自動で書込み再開する保証はせず、その時点で記録は終了したものと扱う) |
+| `config.json` の読込み | 起動時のみ。再読込みは `/admin` 経由でメモリ上の値を更新するに留め、`config.json` 直書込みは原子的(temp ファイル → rename)とする |
+
+メモリ上の状態は維持されるため、**WS クライアントへの fan-out / 上流 TCP 接続は USB 抜き挿しの影響を受けない**。
+
+#### 4.4.4 FAT32 制約への配慮
+
+| 制約 | 対応 |
+|---|---|
+| 単一ファイル 4GB 上限 | ログ・records ともに **必ずローテーション**(`logging.max_size_mb` で制御。既定 5MB / max_backups 5) |
+| パス長 260 文字 | `gateway.exe` の隣接配置(`AMB_RC_Lap_Timer\` 直下に成果物を集約)で対応 |
+| 大文字小文字非区別 | パス比較は実装側で case-insensitive 前提 |
+
+#### 4.4.5 SmartScreen / Defender の運用
+
+- 署名なし EXE のため、**初回起動時に Microsoft Defender SmartScreen の警告**が出る。`README.txt` に「**詳細情報** → **実行**」の手順を明記する。
+- Defender Antivirus による初回スキャンで起動が遅れる(数秒〜十数秒)。問題ではないが現地では時間に余裕を持たせる。
+- コード署名は当面しない方針(別 Issue で議論)。
+- Windows Defender Firewall の受信許可ダイアログも初回に出る。`README.txt` で「プライベートネットワークのみ許可」を案内する。
+
+#### 4.4.6 起動時の自動初期化
+
+EXE 起動時に以下を実行する(欠けていても自前で作成):
+
+1. `os.Executable()` で baseDir を取得
+2. `baseDir/logs/` / `baseDir/records/` が無ければ作成(失敗したら警告のみ)
+3. `baseDir/config.json` が無ければ `baseDir/config.example.json` をコピーして使用(両方無ければデフォルト値で起動)
+4. `/healthz` の `paths` フィールドで実際に解決された絶対パスを返す(現地切り分け用)
 
 ---
 
@@ -369,6 +447,7 @@ go run ./cmd/gateway --mock --listen :8080
 ---
 
 ## 10. 改訂履歴
+- v0.1.3 (2026-05-04): §4.4 ポータブル運用(USB 配布)を新設。配布物を ZIP に変更、`os.Executable()` ベースのパス解決、I/O fail-soft、FAT32 制約、SmartScreen / Defender 運用、起動時の自動初期化を明文化。`config.json` に `records.dir` を追加。
 - v0.1.2 (2026-05-04): §9 オープン項目を採取先行ロードマップ(#1〜#9)の番号体系で参照するよう更新し、`docs/roadmap.md` への入口を追加。
 - v0.1.1 (2026-05-04): §3.5 設定の責務境界を新設(サーバ側 / クライアント側の振り分け、`/admin` の責務範囲、`localStorage` キー命名規約)。
 - v0.1 (2026-05-04): 初版。実装前の構成合意。

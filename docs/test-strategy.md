@@ -214,6 +214,9 @@
 | **Soak** | 1〜8 時間 | Mock を回し続けてメモリ / ハンドル / 接続クライアント数 / ログサイズの推移を確認。漏れ無し |
 | **Firewall fresh** | 5 分 | クリーン Windows での初回起動。Defender Firewall 許可ダイアログ通過、その後接続 |
 | **mDNS** | 5 分 | `http://<host>.local/` でアクセス可能か(iOS / Android / Win それぞれ) |
+| **USB 起動** | 5 分 | クリーン Windows に USB を挿し、ZIP を展開、`gateway.exe` ダブルクリックで起動できる(SmartScreen → 詳細情報 → 実行 + Firewall 許可) |
+| **USB 抜き挿し** | 5 分 | 起動中に USB を抜く → ログ書込みエラー警告のみで停止しない / 上流 TCP・WS fan-out は継続 / 再挿入後も停止しない |
+| **FAT32 配置** | 30 分 | FAT32 フォーマットの USB に展開し、ログ・records が `max_size_mb` でローテーションされる(4GB 上限に到達しない) |
 
 ### 6.3 α(早期検証)と β(リリース前)の位置づけ
 
@@ -221,8 +224,8 @@
 
 | 段階 | 実施タイミング | 必須シナリオ | 任意シナリオ |
 |---|---|---|---|
-| **Field Test α** | 実装フェーズ #6(音声読み上げ)完了後 | Smoke / Multi-client / Firewall fresh | mDNS |
-| **Field Test β** | 実装フェーズ #8(設定 WebUI)完了後 | Sleep/Wake / WiFi drop / Soak 1h | Soak 8h、再 Smoke |
+| **Field Test α** | 実装フェーズ #6(音声読み上げ)完了後 | Smoke / Multi-client / Firewall fresh / **USB 起動** | mDNS |
+| **Field Test β** | 実装フェーズ #8(設定 WebUI)完了後 | Sleep/Wake / WiFi drop / Soak 1h / **USB 抜き挿し** / **FAT32 配置** | Soak 8h、再 Smoke |
 
 ### 6.4 Field Test 用ツール群
 
@@ -393,5 +396,6 @@
 ---
 
 ## 12. 改訂履歴
+- v0.1.2 (2026-05-04): §6.2 シナリオに **USB 起動 / USB 抜き挿し / FAT32 配置** を追加。§6.3 α/β の必須シナリオに USB 起動 / 抜き挿し / FAT32 配置を組み込み。`docs/architecture.md` §4.4(ポータブル運用)と整合。
 - v0.1.1 (2026-05-04): §1.1 ピラミッドに Field Test 層を追加。§6 Field Test(実 LAN)、§7 現地データ採取セッション手順を新設。§11 にオープン項目 #8 / #9(`tools/fieldtest/`、`field-test-log.md`)を追加。
 - v0.1 (2026-05-04): 初版。実装着手前のテスト方針合意。

@@ -103,13 +103,26 @@ on:
 2. Node セットアップ → `cd web && npm ci && npm run build`
 3. ビルド成果物を `gateway/internal/webassets/dist/` に同期(`scripts/build.ps1` か `Makefile` 経由)
 4. Go セットアップ(`go-version: '1.20.x'`)
-5. クロスビルド:
+5. クロスビルド(配布物のディレクトリへ直接出力):
    ```
-   GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=${TAG}" -o dist/gateway.exe ./cmd/gateway
+   mkdir -p dist/AMB_RC_Lap_Timer/{logs,records}
+   touch dist/AMB_RC_Lap_Timer/logs/.gitkeep dist/AMB_RC_Lap_Timer/records/.gitkeep
+   GOOS=windows GOARCH=amd64 go build -trimpath \
+     -ldflags="-s -w -X main.version=${TAG}" \
+     -o dist/AMB_RC_Lap_Timer/gateway.exe ./cmd/gateway
+   cp config.example.json dist/AMB_RC_Lap_Timer/
+   cp packaging/README.txt dist/AMB_RC_Lap_Timer/
    ```
-6. サンプル `config.example.json` を `dist/` に同梱
-7. `softprops/action-gh-release@<pinned>` で `dist/*` を Releases に添付
+6. **ZIP アーカイブ化**(USB ポータブル配布、`docs/architecture.md` §4.4):
+   ```
+   cd dist
+   zip -r AMB_RC_Lap_Timer-${TAG}.zip AMB_RC_Lap_Timer/
+   sha256sum AMB_RC_Lap_Timer-${TAG}.zip > AMB_RC_Lap_Timer-${TAG}.zip.sha256
+   ```
+7. `softprops/action-gh-release@<pinned>` で **`dist/AMB_RC_Lap_Timer-${TAG}.zip` と `.sha256`** を Releases に添付
 8. リリースノートはタグ間のコミットから自動生成(`generate_release_notes: true`)
+
+> 配布物は **ZIP 単一ファイル**。USB に展開してそのまま起動する想定(`docs/architecture.md` §4.4 ポータブル運用)。`packaging/README.txt` は SmartScreen / Firewall 通過手順を含む現地ガイド(別 PR で同梱物を準備)。
 
 ### 4.3 タグ運用
 - セマンティックバージョン: `vMAJOR.MINOR.PATCH`(例 `v0.1.0`)
@@ -189,9 +202,12 @@ on:
 | 3 | `docs.yml` の Markdown lint を導入するか | 任意 |
 | 4 | Dependabot 設定(`.github/dependabot.yml`) | CI 安定後 |
 | 5 | Windows ランナーでの go test 補強の要否 | 実機接続後 |
-| 6 | リリースアーティファクトのチェックサム生成(SHA256) | リリース直前 |
+| 6 | リリースアーティファクトのチェックサム生成(SHA256) | §4.2 で `.sha256` 同梱を反映済み。署名は別途 |
+| 7 | `packaging/README.txt`(現地手順)の同梱物作成 | リリース PR(#9) |
+| 8 | コード署名(SmartScreen 警告抑止) | 後日(必要になったら) |
 
 ---
 
 ## 11. 改訂履歴
+- v0.1.1 (2026-05-04): §4.2 Release ジョブを USB ポータブル ZIP 配布(`AMB_RC_Lap_Timer-vX.Y.Z.zip` + `.sha256`)に変更。`docs/architecture.md` §4.4 と整合。オープン項目に `packaging/README.txt` 同梱(#7)とコード署名(#8)を追加。
 - v0.1 (2026-05-04): 初版。実装着手前の方針合意。
