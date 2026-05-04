@@ -393,11 +393,14 @@ go run ./cmd/gateway --mock --listen :8080
 
 ## 6. 依存とバージョン方針
 
-### 6.1 Go 側の主要依存(候補)
-- 標準ライブラリ中心(`net/http`, `net`, `embed`, `log/slog`)
-- WebSocket: `nhooyr.io/websocket` または `gorilla/websocket`(後続 PR で確定)
+### 6.1 Go 側の主要依存
+- 標準ライブラリ中心(`net/http`, `net`, `embed`)
+- WebSocket: `nhooyr.io/websocket` または `gorilla/websocket`(#3 で確定)
 - 設定: `encoding/json`(YAML は採用しない、運用簡易さ優先)
-- ロガー: `log/slog`(Go 1.21+の標準) → **Go 1.20 固定のため `slog` は使えない**。`uber.org/zap` か単純なラップを採用予定(後続 PR で確定)
+- ロガー: **`go.uber.org/zap` + `gopkg.in/natefinch/lumberjack.v2`**(#34 / gateway-recorder PR で確定)
+  - Go 1.20 固定で `log/slog`(1.21+)は使えないため
+  - zap は Console / JSON エンコーダ両対応で §7 の「人間可読 + 構造化」要件を満たす
+  - lumberjack は FAT32 上で安全な原子的 rename によるローテーションを提供し §4.4.4 を直接サポート
 
 ### 6.2 Web 側の主要依存(候補)
 - `vite`, `typescript`
@@ -416,9 +419,11 @@ go run ./cmd/gateway --mock --listen :8080
 ## 7. ログ・観測性
 
 - ログレベル: `error` / `warn` / `info` / `debug`。既定 `info`。
-- 出力: ファイル(`logging.dir` 配下、ローテーション)+ 標準出力
-- フォーマット: 人間可読 + 重要イベントは構造化(JSON 行)を選択可能(後続 PR で詳細化)
-- `/healthz` で簡易ヘルスを公開。詳細メトリクスは LAN 内専用なので最小限。
+- 出力: ファイル(`logging.dir/gateway.log` を JSON 行で出力、ローテーション)+ 標準出力(Console エンコーダで人間可読)
+- 実装: `go.uber.org/zap` + `gopkg.in/natefinch/lumberjack.v2`(§6.1)
+- ローテーション: `logging.max_size_mb`(既定 5 MB)を超えたら `gateway.log.YYYY-MM-DDTHH-MM-SS.SSS` 形式の bak に rename。`logging.max_backups`(既定 5)で世代管理
+- I/O fail-soft: ログ書込みエラーはプロセスを止めず標準エラーに警告のみ(§4.4.3)
+- `/healthz` で簡易ヘルスを公開(#3)。詳細メトリクスは LAN 内専用なので最小限。
 
 ---
 
@@ -438,15 +443,16 @@ go run ./cmd/gateway --mock --listen :8080
 |---|------|------------------------|
 | 1 | 採用する WebSocket ライブラリ確定(nhooyr / gorilla) | gateway-full PR(#3) |
 | 2 | フロントの UI フレームワーク確定(React 想定の検証含む) | SPA 骨格 PR(#4) |
-| 3 | ロガー選定(zap / 自前ラップ / その他) | gateway-recorder PR(#1) |
-| 4 | `logs/` のローテーション仕様(`lumberjack` 等) | gateway-recorder PR(#1) |
-| 5 | `--replay` の速度切替の細かい仕様 | replay PR(#7) / `docs/test-strategy.md` |
+| 3 | ~~ロガー選定(zap / 自前ラップ / その他)~~ → **`uber-go/zap` を採用**(gateway-recorder PR で確定、#34 クローズ) |
+| 4 | ~~`logs/` のローテーション仕様(`lumberjack` 等)~~ → **`gopkg.in/natefinch/lumberjack.v2` を採用**(`max_size_mb=5` / `max_backups=5` 既定、JSON 行で `<dir>/gateway.log` に出力、FAT32 上で原子的 rename ローテーション) |
+| 5 | ~~`--replay` の速度切替の細かい仕様~~ → 速度切替自体は replay PR(#7)で確定だが、**`.timing.csv` の形式は本 PR で確定**: ヘッダ `offset_ms,length_bytes` の 2 列 CSV、`offset_ms` は接続成功時刻からの経過 ms、1 受信チャンクにつき 1 行 |
 | 6 | CI でのアーティファクト生成 | リリース自動化 PR(#9) / `docs/ci-cd.md` |
 | 7 | `web/dist/` を `gateway/internal/webassets/dist/` に同期する手段(`Makefile` / PowerShell スクリプト) | gateway-full PR(#3) |
 
 ---
 
 ## 10. 改訂履歴
+- v0.1.4 (2026-05-04): §6.1 / §7 / §9 を gateway-recorder PR の確定事項で更新。ロガーを `uber-go/zap` + `lumberjack.v2` に確定(§9 #3 / #4)、`.timing.csv` 形式を `offset_ms,length_bytes` の 2 列に確定(§9 #5)。
 - v0.1.3 (2026-05-04): §4.4 ポータブル運用(USB 配布)を新設。配布物を ZIP に変更、`os.Executable()` ベースのパス解決、I/O fail-soft、FAT32 制約、SmartScreen / Defender 運用、起動時の自動初期化を明文化。`config.json` に `records.dir` を追加。
 - v0.1.2 (2026-05-04): §9 オープン項目を採取先行ロードマップ(#1〜#9)の番号体系で参照するよう更新し、`docs/roadmap.md` への入口を追加。
 - v0.1.1 (2026-05-04): §3.5 設定の責務境界を新設(サーバ側 / クライアント側の振り分け、`/admin` の責務範囲、`localStorage` キー命名規約)。

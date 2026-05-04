@@ -385,8 +385,8 @@
 |---|------|----------------|
 | 1 | フィクスチャ期待値 JSON のスキーマ確定 | パーサ PR(#2) |
 | 2 | `gateway/testdata/` と `web/tests/fixtures/` の同期手段(symlink / コピー / ビルド) | gateway-full PR(#3) |
-| 3 | `--replay` のタイミングデータ(`.timing.csv`)形式の確定 | gateway-recorder PR(#1) |
-| 4 | `golangci-lint` / `testify` 採否 | gateway-recorder PR(#1) |
+| 3 | ~~`--replay` のタイミングデータ(`.timing.csv`)形式の確定~~ → **確定**: ヘッダ `offset_ms,length_bytes` の 2 列 CSV、`offset_ms` は接続成功時刻からの経過 ms、1 受信チャンクにつき 1 行(gateway-recorder PR で確定) |
+| 4 | ~~`golangci-lint` / `testify` 採否~~ → **不採用**(本 PR 時点)。`gofmt -s` + `go vet` + 標準 `testing` のテーブル駆動で十分。将来テストコードが拡大したら再検討(別 Issue で起票候補) |
 | 5 | Mock シナリオの YAML 化 | 機能拡張時 |
 | 6 | 録画フィクスチャの取り扱い(コミット可否、サイズ閾値) | 採取セッション後 |
 | 7 | E2E 用にヘッドレスブラウザを導入するか(Playwright 等)。当面は不要 | 後日再検討 |
@@ -396,6 +396,7 @@
 ---
 
 ## 12. 改訂履歴
+- v0.1.3 (2026-05-04): §11 #3 / #4 を gateway-recorder PR の確定事項で更新。`.timing.csv` 形式は `offset_ms,length_bytes` 2 列で確定(#3)、`golangci-lint` / `testify` は本 PR 時点では不採用とし、必要時に別 Issue 起票で再検討(#4)。
 - v0.1.2 (2026-05-04): §6.2 シナリオに **USB 起動 / USB 抜き挿し / FAT32 配置** を追加。§6.3 α/β の必須シナリオに USB 起動 / 抜き挿し / FAT32 配置を組み込み。`docs/architecture.md` §4.4(ポータブル運用)と整合。
 - v0.1.1 (2026-05-04): §1.1 ピラミッドに Field Test 層を追加。§6 Field Test(実 LAN)、§7 現地データ採取セッション手順を新設。§11 にオープン項目 #8 / #9(`tools/fieldtest/`、`field-test-log.md`)を追加。
 - v0.1 (2026-05-04): 初版。実装着手前のテスト方針合意。
