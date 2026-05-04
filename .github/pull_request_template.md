@@ -22,5 +22,25 @@ PR の運用ルールは docs/development-workflow.md を参照。
 - [ ] 仕様書(`docs/*.md`)を更新した、または更新不要であることを確認
 - [ ] スクリーンショット / ログ(必要に応じて)
 
+## Local verification (Windows)
+<!--
+ローカル Windows 担当が実行したコマンドと結果を記載(docs/development-workflow.md §8.3)。
+コードを伴わない PR(docs のみ等)は「N/A」と記載してよい。
+-->
+```pwsh
+# 例:
+# cd gateway
+# go test -race -count=1 ./...
+# go build ./cmd/gateway
+```
+- [ ] Go ビルド / テストが Windows で通る(該当時)
+- [ ] Web ビルド / テストが Windows で通る(該当時)
+- [ ] 実 EXE 起動と `/healthz` 疎通(該当時)
+- [ ] 実機 AMB 接続テスト(該当時)
+
 ## Notes for reviewer
 <!-- レビュー観点・既知の制限・フォローアップ Issue の予告など。 -->
+
+## Follow-up issues
+<!-- 派生した気づき・未解決事項を新規 Issue として起票し、ここに番号を列挙。 -->
+- Refs #

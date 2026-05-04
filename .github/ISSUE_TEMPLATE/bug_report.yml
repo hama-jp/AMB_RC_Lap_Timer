@@ -51,6 +51,16 @@ body:
         - area:ci
         - area:docs
   - type: textarea
+    id: local_verification
+    attributes:
+      label: ローカル再現/検証手順(Windows)
+      description: 担当エージェントが Windows 上で再現/修正検証するコマンド。pwsh で動く形で記載。
+      placeholder: |
+        ```pwsh
+        cd gateway
+        go run ./cmd/gateway --mock
+        ```
+  - type: textarea
     id: notes
     attributes:
       label: 備考 / 仮説
