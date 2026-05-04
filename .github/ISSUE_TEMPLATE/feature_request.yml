@@ -49,3 +49,29 @@ body:
       placeholder: |
         - [ ] xxx が動作する
         - [ ] docs/yyy.md が更新されている
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 依存関係
+      description: 先に必要な Issue / 後続でブロックされる Issue。
+      placeholder: |
+        - Depends on #
+        - Blocks #
+  - type: textarea
+    id: prereq_docs
+    attributes:
+      label: 先に読むべきドキュメント
+      placeholder: |
+        - docs/architecture.md §3
+        - docs/protocol-p3.md §5
+  - type: textarea
+    id: local_verification
+    attributes:
+      label: ローカル検証手順(Windows)
+      description: 担当エージェントが Windows 上で実行するコマンド。pwsh で動く形で記載。
+      placeholder: |
+        ```pwsh
+        cd gateway
+        go test -race -count=1 ./...
+        go build ./cmd/gateway
+        ```
