@@ -1,0 +1,56 @@
+name: Bug report
+description: 想定外の挙動・不具合の報告
+title: "[bug] "
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 概要
+      description: 何が起きたか / 何が期待だったかを 1-2 行で。
+      placeholder: ゲートウェイ起動直後に WS が EOF で切れる
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 再現手順
+      description: 最小手順を番号付きで。
+      placeholder: |
+        1. `gateway.exe --mock` で起動
+        2. ブラウザで `http://localhost:8080/` を開く
+        3. 数秒で接続が切断される
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待する挙動
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の挙動 / ログ
+      description: ログや DevTools のスクショがあれば貼り付け。
+  - type: input
+    id: env
+    attributes:
+      label: 環境
+      placeholder: Windows 11 23H2 / Chrome 132 / gateway v0.1.0
+  - type: dropdown
+    id: area
+    attributes:
+      label: 影響範囲(area)
+      multiple: true
+      options:
+        - area:gateway
+        - area:web
+        - area:protocol
+        - area:ops
+        - area:ci
+        - area:docs
+  - type: textarea
+    id: notes
+    attributes:
+      label: 備考 / 仮説

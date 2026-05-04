@@ -1,0 +1,37 @@
+name: Idea / Discussion
+description: アイデア・将来検討事項・運用改善・実装中に出た気づき
+title: "[idea] "
+labels: ["type:idea"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: アイデア / 気づき
+      description: ふわっとした段階で OK。後で精緻化する前提。
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: きっかけ / 文脈
+      description: どの作業中に出てきたか。関連 PR / Issue があれば参照。
+  - type: textarea
+    id: next
+    attributes:
+      label: 次のアクション(任意)
+      placeholder: |
+        - 設計書を書く
+        - 実装案をスパイクする
+        - いったん寝かせる
+  - type: dropdown
+    id: area
+    attributes:
+      label: 影響範囲(area)
+      multiple: true
+      options:
+        - area:gateway
+        - area:web
+        - area:protocol
+        - area:ops
+        - area:ci
+        - area:docs
