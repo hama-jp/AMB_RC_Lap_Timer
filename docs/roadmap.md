@@ -55,7 +55,7 @@
 
 ## 3. 各フェーズの責務
 
-### #1 gateway-recorder MVP
+### #1 gateway-recorder MVP  ✅ 実装完了(gateway-recorder PR で実現)
 **目的**: 現地で実データを採取できる最小バイナリを用意する。
 
 **スコープ**:
@@ -74,17 +74,19 @@
 - `--replay`(録画ファイルから再生する側)
 
 **成果物**:
-- `gateway/` Go モジュール(`go.mod` / `cmd/gateway/main.go` / `internal/{config,upstream,source,logging}`)
-- `gateway.exe`(Win amd64、Go 1.20.x ビルド)
+- `gateway/` Go モジュール(`go.mod` / `cmd/gateway/main.go` / `internal/{config,upstream,source,recorder,logging}`)
+- `gateway.exe`(Win amd64、Go 1.20.14 ビルド)
 - 最小 `ci.yml`(`gateway` ジョブ)
+- 確定: ロガー = `uber-go/zap` + `lumberjack.v2`(#34 クローズ)
+- 確定: `.timing.csv` 形式 = `offset_ms,length_bytes` 2 列(test-strategy §11 #3 解消)
 
 **現地持ち込み品質の閾値**:
-- [ ] `gateway.exe --upstream <ip:port> --record out.bin` で起動
-- [ ] TCP 接続成功時/切断時/再接続時のログが追える
-- [ ] 30 分連続で TCP を握り続けてもクラッシュしない
-- [ ] Ctrl+C で `out.bin` がフラッシュされて閉じる
-- [ ] `out.bin` の冒頭/末尾を `xxd` 等で見てフレーム形に見える(sanity check)
-- [ ] `--mock` でローカルでも起動だけ確認できる
+- [x] `gateway.exe --upstream <ip:port> --record out.bin` で起動
+- [x] TCP 接続成功時/切断時/再接続時のログが追える
+- [x] 30 分連続で TCP を握り続けてもクラッシュしない(Mock で確認、実機は採取セッション)
+- [x] Ctrl+C で `out.bin` がフラッシュされて閉じる
+- [x] `out.bin` の冒頭/末尾を `xxd` 等で見てフレーム形に見える(sanity check、Mock で確認)
+- [x] `--mock` でローカルでも起動だけ確認できる
 
 **先に読むべき docs**: `gateway-technical-decision.md` / `architecture.md` §2-§3 / `test-strategy.md` §5
 
@@ -193,7 +195,7 @@
 | 議題 | 決定タイミング | 暫定方針 |
 |---|---|---|
 | WebSocket ライブラリ(Go) | #1 着手時 | `nhooyr.io/websocket` 候補 |
-| ロガー(Go 1.20、`slog` 不可) | #1 着手時 | `uber-go/zap` または自前ラッパー |
+| ~~ロガー(Go 1.20、`slog` 不可)~~ → **#34 / gateway-recorder PR で確定**: `uber-go/zap` + `lumberjack.v2` |
 | WS バックプレッシャ方針 | #3 着手時 | 古いフレーム破棄 + 警告ログ(暫定) |
 | UI フレームワーク | #4 着手時 | React + TS + Tailwind(暫定) |
 | iOS Safari Speech のユーザー操作要件 | #6 着手時 | 起動画面で「読み上げを許可」ボタン |
@@ -204,4 +206,5 @@
 ---
 
 ## 5. 改訂履歴
+- v0.1.1 (2026-05-04): §3 #1(gateway-recorder MVP)を ✅ 実装完了に更新。§4 ロガーを `uber-go/zap` + `lumberjack.v2` で確定(#34 クローズ)。
 - v0.1 (2026-05-04): 初版。採取先行ロードマップを確定。

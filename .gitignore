@@ -1,0 +1,13 @@
+# Release / build artifacts
+dist/
+*.exe
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local environment
+.env
+.env.local
