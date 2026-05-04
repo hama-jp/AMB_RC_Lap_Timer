@@ -2,7 +2,7 @@
 
 本書は GitHub Actions の構成と運用方針を定義する。実体のワークフロー YAML は本書の合意後に別 PR で `.github/workflows/` に追加する。前提となるリポジトリ構成・ビルドフローは `docs/architecture.md`、開発運用ルールは `docs/development-workflow.md` を参照。
 
-> Status: **Draft v0.1**
+> Status: **Draft v0.1.1**
 
 ---
 

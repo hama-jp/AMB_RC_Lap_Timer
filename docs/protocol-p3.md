@@ -2,7 +2,7 @@
 
 本書はゲートウェイから受信した AMB P3 デコーダーの **TCP バイト列を、ブラウザ(TypeScript)でデコードするために必要な仕様** をまとめたものである。実装根拠は参考実装 [hama-jp/AMB_Lap_Speak](https://github.com/hama-jp/AMB_Lap_Speak/tree/master) の `AmbP3/` 配下(`decoder.py` / `crc16.py` / `records.py` / `time_client.py`)。
 
-> Status: **Draft v0.1**(参考実装読解ベース。実機検証で更新予定)
+> Status: **Draft v0.1.1**(参考実装読解ベース。実機検証で更新予定)
 
 ---
 
