@@ -49,7 +49,7 @@ type cliFlags struct {
 func main() {
 	var fl cliFlags
 	flag.StringVar(&fl.configPath, "config", "", "config.json path (default: <exeDir>/config.json)")
-	flag.StringVar(&fl.upstream, "upstream", "", "override upstream host:port (e.g. 192.168.10.20:5403)")
+	flag.StringVar(&fl.upstream, "upstream", "", "override upstream host:port (e.g. 192.168.1.21:5403)")
 	flag.StringVar(&fl.recordPath, "record", "", "record received bytes to <file> (and <file>.timing.csv)")
 	flag.BoolVar(&fl.mockMode, "mock", false, "use built-in mock source (ignores --upstream)")
 	flag.BoolVar(&fl.showVersion, "version", false, "print version and exit")
