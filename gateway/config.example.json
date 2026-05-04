@@ -1,0 +1,19 @@
+{
+  "upstream": {
+    "host": "192.168.10.20",
+    "port": 5403,
+    "reconnect": {
+      "initial_ms": 1000,
+      "max_ms": 30000,
+      "jitter_ratio": 0.2
+    }
+  },
+  "logging": {
+    "dir": "./logs",
+    "max_size_mb": 5,
+    "max_backups": 5
+  },
+  "records": {
+    "dir": "./records"
+  }
+}
