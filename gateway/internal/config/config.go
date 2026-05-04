@@ -61,7 +61,7 @@ type RecordsConfig struct {
 func Defaults() Config {
 	return Config{
 		Upstream: UpstreamConfig{
-			Host: "192.168.10.20",
+			Host: "192.168.1.21",
 			Port: 5403,
 			Reconnect: ReconnectConfig{
 				InitialMs:   1000,

@@ -8,8 +8,8 @@ import (
 
 func TestDefaults_Values(t *testing.T) {
 	d := Defaults()
-	if d.Upstream.Host != "192.168.10.20" {
-		t.Errorf("default upstream host: got %q want 192.168.10.20", d.Upstream.Host)
+	if d.Upstream.Host != "192.168.1.21" {
+		t.Errorf("default upstream host: got %q want 192.168.1.21", d.Upstream.Host)
 	}
 	if d.Upstream.Port != 5403 {
 		t.Errorf("default upstream port: got %d want 5403", d.Upstream.Port)

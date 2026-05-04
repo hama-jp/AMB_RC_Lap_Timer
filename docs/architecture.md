@@ -132,7 +132,7 @@ gateway.exe [--config <path>] [--mock | --replay <file> | --record <file>] [--li
 {
   "listen": ":8080",
   "upstream": {
-    "host": "192.168.10.20",
+    "host": "192.168.1.21",
     "port": 5403,
     "reconnect": {
       "initial_ms": 1000,
