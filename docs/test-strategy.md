@@ -2,7 +2,7 @@
 
 本書は実機 AMB デコーダーが手元にない状態でも開発・回帰検証を回せるテスト戦略を定義する。前提となる構成は `docs/architecture.md`、プロトコル仕様は `docs/protocol-p3.md`、CI 構成は `docs/ci-cd.md` を参照。
 
-> Status: **Draft v0.1**
+> Status: **Draft v0.1.3**
 
 ---
 

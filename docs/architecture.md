@@ -2,7 +2,7 @@
 
 本書はリポジトリ構成、配信トポロジ、ビルドフロー、ローカル開発手順を定義する。実装着手前の合意ドキュメントであり、以降の実装 PR は本書に従う。前提となる設計判断は `docs/gateway-technical-decision.md`、プロトコル仕様は `docs/protocol-p3.md` を参照。
 
-> Status: **Draft v0.1**
+> Status: **Draft v0.1.4**
 
 ---
 

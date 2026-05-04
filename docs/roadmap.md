@@ -2,7 +2,7 @@
 
 実装フェーズの順序と各フェーズの責務を中央集約する。**「実機 LAN 環境での実データ採取を、フロントエンド/パーサ実装より前に行う」** 方針(採取先行)を採用しているため、フェーズ番号は通例の「ゲートウェイ → SPA → パーサ」順ではないことに注意。
 
-> Status: **Draft v0.1**
+> Status: **Draft v0.1.1**(実装フェーズ #1 完了、★ 採取セッション待ち)
 
 ---
 
@@ -23,29 +23,29 @@
 ## 2. 全体マップ
 
 ```
-[準備フェーズ]                                                              ← 完了済み
-  R0  ハンドオフ・プロトコル(マルチエージェント運用)
-  R1  README 同期
-  R2  protocol-p3 用語明確化
-  R3  architecture 設定境界
-  R4  ロードマップ採取先行へ更新                                              ← 本書
-  R5  test-strategy に Field Test 節 + 現地採取手順
-  R7  ポータブル配布(USB)前提を反映
-  R6  バックログ Issue 起票
+[準備フェーズ] ✅ 完了
+  ✅ R0  ハンドオフ・プロトコル(マルチエージェント運用)
+  ✅ R1  README 同期
+  ✅ R2  protocol-p3 用語明確化
+  ✅ R3  architecture 設定境界
+  ✅ R4  ロードマップ採取先行へ更新                                          ← 本書
+  ✅ R5  test-strategy に Field Test 節 + 現地採取手順
+  ✅ R7  ポータブル配布(USB)前提を反映
+  ✅ R6  バックログ Issue 起票(#26-#37)
 
-[実装フェーズ]                                                              ← これから
-  #1  gateway-recorder MVP
-  ★   実 LAN 現地データ採取セッション
-  #2  P3 パーサ TS 実装
-  #3  gateway-full(WS fan-out + go:embed + /healthz + /admin)
-  #4  SPA 骨格
-  #5  ラップ計算と表示
-  #6  音声読み上げ
-  ★   Field Test α(Smoke + Multi-client)
-  #7  replay モード
-  #8  設定 WebUI
-  ★   Field Test β(Sleep/Wake + WiFi drop + Soak 1h)
-  #9  リリース自動化(v0.1.0)
+[実装フェーズ]
+  ✅ #1  gateway-recorder MVP                                               (PR #39 merged)
+  ⌛ ★   実 LAN 現地データ採取セッション                                       ← 次のアクション
+  ⏳ #2  P3 パーサ TS 実装
+  ⏳ #3  gateway-full(WS fan-out + go:embed + /healthz + /admin)
+  ⏳ #4  SPA 骨格
+  ⏳ #5  ラップ計算と表示
+  ⏳ #6  音声読み上げ
+  ⏳ ★   Field Test α(Smoke + Multi-client)
+  ⏳ #7  replay モード
+  ⏳ #8  設定 WebUI
+  ⏳ ★   Field Test β(Sleep/Wake + WiFi drop + Soak 1h)
+  ⏳ #9  リリース自動化(v0.1.0)
 
 [継続フェーズ]
   実機検証で派生 Issue を消化、機能拡張(将来)
@@ -188,23 +188,34 @@
 
 ---
 
-## 4. 想定される派生 Issue(R6 で起票予定)
+## 4. 派生 Issue(R6 で起票済み)
 
-各フェーズで決定が必要な技術選択:
+各フェーズで決定が必要な技術選択は GitHub Issue として起票済み。Issue 番号は対応するフェーズで参照する。
 
-| 議題 | 決定タイミング | 暫定方針 |
-|---|---|---|
-| WebSocket ライブラリ(Go) | #1 着手時 | `nhooyr.io/websocket` 候補 |
-| ~~ロガー(Go 1.20、`slog` 不可)~~ → **#34 / gateway-recorder PR で確定**: `uber-go/zap` + `lumberjack.v2` |
-| WS バックプレッシャ方針 | #3 着手時 | 古いフレーム破棄 + 警告ログ(暫定) |
-| UI フレームワーク | #4 着手時 | React + TS + Tailwind(暫定) |
-| iOS Safari Speech のユーザー操作要件 | #6 着手時 | 起動画面で「読み上げを許可」ボタン |
-| 上流接続状態の UI 表現 | #4-#5 | WS テキストフレームで通知 + バナー |
-| クライアント許容数の上限 | #3 着手時 | 10 程度を目安(個人練習用) |
-| 時刻同期(`GET_TIME` 利用)の取り扱い | 採取後 | 必要性を採取データで判断 |
+| 議題 | Issue | 解消フェーズ | 暫定方針 |
+|---|---|---|---|
+| WebSocket ライブラリ(Go) | [#33](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/33) | #3 | `nhooyr.io/websocket` 候補 |
+| ~~ロガー(Go 1.20、`slog` 不可)~~ | ✅ [#34](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/34) | **#1 で確定** | `uber-go/zap` + `lumberjack.v2`(PR #39) |
+| WS バックプレッシャ方針 | [#27](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/27) | #3 | 古いフレーム破棄 + 警告ログ(暫定) |
+| UI フレームワーク | [#32](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/32) | #4 | React + TS + Tailwind(暫定) |
+| iOS Safari Speech のユーザー操作要件 | [#26](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/26) | #6 | 起動画面で「読み上げを許可」ボタン |
+| 上流接続状態の UI 表現 | [#28](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/28) | #3-#5 | WS テキストフレームで通知 + バナー |
+| WS クライアント再接続 UX | [#29](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/29) | #4 | 指数バックオフ + バナー表示 |
+| クライアント許容数の上限 | [#31](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/31) | #3 | 10 を目安、100 でセーフティ切断 |
+| 時刻同期(`GET_TIME` 利用)の取り扱い | [#30](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/30) | 採取後 | 必要性を採取データで判断 |
+| `tools/fieldtest/*` の実装 | [#35](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/35) | Field Test α 前 | tcp-emitter / ws-recorder / soak-monitor |
+| `docs/field-test-log.md` フォーマット | [#36](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/36) | Field Test α 前 | フォーマット骨格 |
+| `packaging/README.txt` ひな型 | [#37](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/37) | リリース PR 前 | 現地ガイド |
+
+PR #39 のレビューで派生した追従 Issue:
+| 議題 | Issue | 解消フェーズ | 備考 |
+|---|---|---|---|
+| `real.Source` Close 後 Read の契約違反 | [#40](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/40) | 任意(現状実害なし) | `closed` フラグ導入 |
+| `real.Source.buf` 4096 vs 仕様 10240 の表記揺れ | [#41](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/41) | 任意 | 案 A 推奨(10240 に揃える) |
 
 ---
 
 ## 5. 改訂履歴
+- v0.1.2 (2026-05-04): §2 全体マップに進行状態(✅ / ⌛ / ⏳)を表示。§4 を「R6 で起票済み」に更新し、派生 Issue 全 12 件 + PR #39 追従 Issue 2 件を表に整理。
 - v0.1.1 (2026-05-04): §3 #1(gateway-recorder MVP)を ✅ 実装完了に更新。§4 ロガーを `uber-go/zap` + `lumberjack.v2` で確定(#34 クローズ)。
 - v0.1 (2026-05-04): 初版。採取先行ロードマップを確定。

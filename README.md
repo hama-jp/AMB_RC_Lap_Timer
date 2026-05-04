@@ -2,7 +2,7 @@
 
 AMB P3 デコーダーに対応した、**個人練習用** のラップタイマー Web アプリ。
 
-> Status: **pre-alpha / 設計フェーズ**(実装着手前。準備フェーズの仕様書整備が完了)
+> Status: **pre-alpha**(実装フェーズ #1 `gateway-recorder MVP` 完了、★ 実 LAN 現地データ採取セッション待ち)
 
 ---
 
@@ -80,17 +80,17 @@ UI デザイン仕様(`docs/design.md`)は実装フェーズで追加予定。
 
 ## 開発状況とロードマップ
 
-- ✅ **準備フェーズ**(進行中): 仕様書整備、開発運用規約、テンプレート整備
-- 🚧 **実装フェーズ**(これから):「**採取先行**」方針 — まず最小ゲートウェイで実機データを採取し、それを根拠に TS パーサを実装する
-  1. `gateway-recorder` MVP(TCP + `--record` + `--mock`、現地持ち込み品質)
-  - ★ 実 LAN 現地データ採取セッション
-  2. P3 パーサ TS 実装(採取データを fixture に)
-  3. `gateway-full`(WS fan-out + `go:embed` + `/healthz` + `/admin`)
-  4. SPA 骨格 → 5. ラップ計算と表示 → 6. 音声読み上げ
-  - ★ Field Test α
-  7. replay モード → 8. 設定 WebUI
-  - ★ Field Test β
-  9. リリース自動化(`v0.1.0`)
+- ✅ **準備フェーズ**(完了): 仕様書整備、開発運用規約、テンプレート、バックログ Issue 起票
+- 🚧 **実装フェーズ**(進行中):「**採取先行**」方針 — まず最小ゲートウェイで実機データを採取し、それを根拠に TS パーサを実装する
+  - ✅ 1. `gateway-recorder` MVP(TCP + `--record` + `--mock`、現地持ち込み品質)
+  - ⌛ ★ 実 LAN 現地データ採取セッション ← **次のアクション**
+  - ⏳ 2. P3 パーサ TS 実装(採取データを fixture に)
+  - ⏳ 3. `gateway-full`(WS fan-out + `go:embed` + `/healthz` + `/admin`)
+  - ⏳ 4. SPA 骨格 → 5. ラップ計算と表示 → 6. 音声読み上げ
+  - ⏳ ★ Field Test α
+  - ⏳ 7. replay モード → 8. 設定 WebUI
+  - ⏳ ★ Field Test β
+  - ⏳ 9. リリース自動化(`v0.1.0`)
 - 詳細は **[`docs/roadmap.md`](docs/roadmap.md)** を参照
 
 ---
