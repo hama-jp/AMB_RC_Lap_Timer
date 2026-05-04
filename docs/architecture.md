@@ -354,18 +354,21 @@ go run ./cmd/gateway --mock --listen :8080
 
 ## 9. オープン項目(後続 Issue で対応)
 
+> 各項目の **解消タイミング**は [`docs/roadmap.md`](roadmap.md) §4 を参照。実機採取で埋まる項目(`docs/protocol-p3.md` §9)は、ロードマップの「★ 実 LAN 現地データ採取セッション」フェーズで解消する。
+
 | # | 項目 | 担当ドキュメント / 担当 |
 |---|------|------------------------|
-| 1 | 採用する WebSocket ライブラリ確定(nhooyr / gorilla) | gateway 骨格 PR |
-| 2 | フロントの UI フレームワーク確定(React 想定の検証含む) | web 骨格 PR |
-| 3 | ロガー選定(zap / 自前ラップ / その他) | gateway 骨格 PR |
-| 4 | `logs/` のローテーション仕様(`lumberjack` 等) | gateway 骨格 PR |
-| 5 | `--replay` の速度切替の細かい仕様 | `docs/test-strategy.md` |
-| 6 | CI でのアーティファクト生成 | `docs/ci-cd.md` |
-| 7 | `web/dist/` を `gateway/internal/webassets/dist/` に同期する手段(`Makefile` / PowerShell スクリプト) | gateway 骨格 PR |
+| 1 | 採用する WebSocket ライブラリ確定(nhooyr / gorilla) | gateway-full PR(#3) |
+| 2 | フロントの UI フレームワーク確定(React 想定の検証含む) | SPA 骨格 PR(#4) |
+| 3 | ロガー選定(zap / 自前ラップ / その他) | gateway-recorder PR(#1) |
+| 4 | `logs/` のローテーション仕様(`lumberjack` 等) | gateway-recorder PR(#1) |
+| 5 | `--replay` の速度切替の細かい仕様 | replay PR(#7) / `docs/test-strategy.md` |
+| 6 | CI でのアーティファクト生成 | リリース自動化 PR(#9) / `docs/ci-cd.md` |
+| 7 | `web/dist/` を `gateway/internal/webassets/dist/` に同期する手段(`Makefile` / PowerShell スクリプト) | gateway-full PR(#3) |
 
 ---
 
 ## 10. 改訂履歴
+- v0.1.2 (2026-05-04): §9 オープン項目を採取先行ロードマップ(#1〜#9)の番号体系で参照するよう更新し、`docs/roadmap.md` への入口を追加。
 - v0.1.1 (2026-05-04): §3.5 設定の責務境界を新設(サーバ側 / クライアント側の振り分け、`/admin` の責務範囲、`localStorage` キー命名規約)。
 - v0.1 (2026-05-04): 初版。実装前の構成合意。

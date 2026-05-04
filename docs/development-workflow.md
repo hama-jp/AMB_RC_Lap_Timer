@@ -96,6 +96,7 @@ Refs #3
 | `docs/protocol-p3.md` | AMB P3 プロトコル仕様(TS パーサの根拠) |
 | `docs/ci-cd.md` | GitHub Actions の構成と運用 |
 | `docs/test-strategy.md` | Mock/Replay/Record の運用とテスト方針 |
+| `docs/roadmap.md` | 実装フェーズの順序と各フェーズの責務(採取先行) |
 | `docs/decisions/` (将来) | ADR を増やす場合の置き場 |
 
 ## 7. ワークフロー手順(典型例)
