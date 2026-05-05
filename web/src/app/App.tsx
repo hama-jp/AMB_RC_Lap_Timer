@@ -1,6 +1,12 @@
+import { useState } from 'react';
+
+import { StatusBanner } from '../features/status/StatusBanner';
+import { createWsClient } from '../transport/wsClient';
 import { AppRouter } from './router';
 
 export function App(): JSX.Element {
+  const [wsClient] = useState(() => createWsClient());
+
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-10">
       <header>
@@ -17,6 +23,7 @@ export function App(): JSX.Element {
           </a>
         </nav>
       </header>
+      <StatusBanner wsClient={wsClient} />
       <AppRouter />
     </main>
   );
