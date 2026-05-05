@@ -54,6 +54,54 @@ func TestRecorder_BasicWrite(t *testing.T) {
 	}
 }
 
+// Regression for the field-2026-05-05 incident: timing.csv had only the
+// header because the user terminated gateway.exe with the window's close
+// button instead of Ctrl+C, so Recorder.Close() (and its csv.Writer.Flush)
+// never ran. Write() must flush per row so already-reported rows survive
+// a forced termination.
+func TestRecorder_Write_RowsPersistedBeforeClose(t *testing.T) {
+	dir := t.TempDir()
+	binPath := filepath.Join(dir, "out.bin")
+	rec, err := New(binPath, zap.NewNop())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = rec.Close() })
+
+	rec.Write([]byte("aa"))
+	rec.Write([]byte("bbbb"))
+
+	// Read the CSV directly *without* calling Close(). On Windows os.Create
+	// shares read access, so this works while the recorder still holds the
+	// handle. If rows are stuck in csv.Writer's bufio buffer, this read
+	// will see only the header.
+	got, err := os.ReadFile(binPath + ".timing.csv")
+	if err != nil {
+		t.Fatalf("read csv: %v", err)
+	}
+	csv := string(got)
+	lines := strings.Split(strings.TrimRight(csv, "\n"), "\n")
+	if len(lines) != 3 { // header + 2 rows
+		t.Fatalf("expected 3 lines (header + 2 rows) before Close; got %d: %q",
+			len(lines), csv)
+	}
+	if !strings.HasSuffix(lines[1], ",2") {
+		t.Errorf("row 1 length wrong: %q", lines[1])
+	}
+	if !strings.HasSuffix(lines[2], ",4") {
+		t.Errorf("row 2 length wrong: %q", lines[2])
+	}
+
+	// And the .bin side should also be readable mid-flight.
+	gotBin, err := os.ReadFile(binPath)
+	if err != nil {
+		t.Fatalf("read bin: %v", err)
+	}
+	if !bytes.Equal(gotBin, []byte("aabbbb")) {
+		t.Errorf("bin: got %q want aabbbb", gotBin)
+	}
+}
+
 func TestRecorder_Close_Idempotent(t *testing.T) {
 	dir := t.TempDir()
 	rec, err := New(filepath.Join(dir, "x.bin"), zap.NewNop())

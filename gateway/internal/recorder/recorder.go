@@ -20,6 +20,11 @@
 // increments an internal counter and emits a warning log, but never returns
 // an error to the caller — the caller (main loop) keeps the gateway alive
 // for the WS fan-out and upstream connection.
+//
+// Persistence: every Write() flushes the underlying CSV buffer, so a
+// forced termination (window-close, taskkill) preserves all rows already
+// reported to Write(). The .bin side uses unbuffered os.File.Write, so
+// it is already on the OS page cache after each call.
 package recorder
 
 import (
@@ -92,6 +97,11 @@ func newWithWriters(bin, timing io.WriteCloser, log *zap.Logger, now func() time
 
 // Write appends p to the .bin file and a row to the .timing.csv file.
 // Errors from either underlying writer are downgraded to warnings.
+//
+// The CSV row is flushed after every write so a forced termination
+// (window-close, taskkill, OS crash) does not lose buffered timing rows.
+// The .bin side uses os.File.Write directly and is already pushed into
+// the kernel page cache without a userland buffer.
 func (r *Recorder) Write(p []byte) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -108,6 +118,13 @@ func (r *Recorder) Write(p []byte) {
 	}); err != nil {
 		r.failures++
 		r.log.Warn("record timing write failed",
+			zap.Error(err), zap.Int("failures", r.failures))
+		return
+	}
+	r.timingW.Flush()
+	if err := r.timingW.Error(); err != nil {
+		r.failures++
+		r.log.Warn("record timing flush failed",
 			zap.Error(err), zap.Int("failures", r.failures))
 	}
 }
