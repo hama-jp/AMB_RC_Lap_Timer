@@ -1,5 +1,6 @@
-# Release / build artifacts
-dist/
+# Release / build artifacts (root-level USB bundle only — anchor to root
+# so gateway/internal/webassets/dist/ is not unintentionally ignored).
+/dist/
 *.exe
 
 # Captured raw data (privacy) — third-party transponder numbers must be

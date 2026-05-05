@@ -3,3 +3,8 @@
 *.test
 *.out
 coverage.txt
+
+# Embedded SPA bundle: `scripts/build.ps1` populates this from `web/dist/`.
+# We track only `.gitkeep` so the directory exists for `//go:embed`.
+internal/webassets/dist/*
+!internal/webassets/dist/.gitkeep
