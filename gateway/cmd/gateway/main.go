@@ -1,13 +1,19 @@
-// Command gateway is the AMB Lap Timer gateway-recorder MVP (Issue #1).
+// Command gateway is the AMB Lap Timer gateway.
 //
-// Scope (docs/roadmap.md §3 #1):
+// Scope (docs/roadmap.md §3 #1 / #3):
 //   - TCP client to upstream AMB, with auto-reconnect (exponential + jitter)
 //   - --record:  write received bytes to <file> and timestamps to <file>.timing.csv
 //   - --mock:    run with an in-memory mock source (no network)
+//   - --replay:  play back a captured .bin (+ .timing.csv) instead of the live upstream
+//   - WebSocket fan-out over /ws (binary frames, byte pipe)
+//   - SPA hosting at /, /assets/* (embedded via go:embed)
+//   - /healthz, /admin (stub), /logs
 //   - Graceful shutdown on Ctrl+C / SIGTERM
 //
-// Out of scope here (handled in #3+):
-//   - WebSocket fan-out, SPA hosting, /admin, /healthz, --replay
+// Out of scope here (handled later):
+//   - /admin real WebUI    -> #8
+//   - WS text-frame status -> #28
+//   - Replay fast/instant detailed semantics -> field-test β
 package main
 
 import (
@@ -17,22 +23,28 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/hama-jp/AMB_RC_Lap_Timer/gateway/internal/config"
+	"github.com/hama-jp/AMB_RC_Lap_Timer/gateway/internal/httpsrv"
+	"github.com/hama-jp/AMB_RC_Lap_Timer/gateway/internal/hub"
 	"github.com/hama-jp/AMB_RC_Lap_Timer/gateway/internal/logging"
 	"github.com/hama-jp/AMB_RC_Lap_Timer/gateway/internal/recorder"
 	"github.com/hama-jp/AMB_RC_Lap_Timer/gateway/internal/source"
 	"github.com/hama-jp/AMB_RC_Lap_Timer/gateway/internal/source/mock"
 	realsrc "github.com/hama-jp/AMB_RC_Lap_Timer/gateway/internal/source/real"
+	"github.com/hama-jp/AMB_RC_Lap_Timer/gateway/internal/source/replay"
 	"github.com/hama-jp/AMB_RC_Lap_Timer/gateway/internal/upstream"
+	"github.com/hama-jp/AMB_RC_Lap_Timer/gateway/internal/webassets"
 )
 
 // version is overridden by -ldflags="-X main.version=..." at release build time.
@@ -42,7 +54,9 @@ type cliFlags struct {
 	configPath  string
 	upstream    string
 	recordPath  string
+	replayPath  string
 	mockMode    bool
+	listen      string
 	showVersion bool
 }
 
@@ -51,7 +65,9 @@ func main() {
 	flag.StringVar(&fl.configPath, "config", "", "config.json path (default: <exeDir>/config.json)")
 	flag.StringVar(&fl.upstream, "upstream", "", "override upstream host:port (e.g. 192.168.1.21:5403)")
 	flag.StringVar(&fl.recordPath, "record", "", "record received bytes to <file> (and <file>.timing.csv)")
-	flag.BoolVar(&fl.mockMode, "mock", false, "use built-in mock source (ignores --upstream)")
+	flag.StringVar(&fl.replayPath, "replay", "", "play back a captured .bin (+ .timing.csv) instead of live upstream")
+	flag.BoolVar(&fl.mockMode, "mock", false, "use built-in mock source (no upstream / no replay)")
+	flag.StringVar(&fl.listen, "listen", "", "override config.listen (e.g. :8080)")
 	flag.BoolVar(&fl.showVersion, "version", false, "print version and exit")
 	flag.Parse()
 
@@ -66,23 +82,24 @@ func main() {
 	}
 }
 
+// run is the long body of main(); kept separate so it can return an error
+// rather than os.Exit. Each step is tagged with the corresponding section
+// of docs/architecture.md for traceability.
 func run(fl cliFlags) error {
+	if err := validateSourceFlags(fl); err != nil {
+		return err
+	}
+
 	baseDir, err := exeDir()
 	if err != nil {
 		return fmt.Errorf("locate exe dir: %w", err)
 	}
-
 	if fl.configPath == "" {
 		fl.configPath = filepath.Join(baseDir, "config.json")
 	}
-
-	// docs/architecture.md §4.4.6: bootstrap config.json from the example
-	// when missing. Failures are warnings, not fatal — the gateway falls
-	// back to defaults if no file exists at all.
 	if err := ensureConfigFile(fl.configPath, baseDir); err != nil {
 		fmt.Fprintf(os.Stderr, "config init warning: %v\n", err)
 	}
-
 	cfg, err := loadConfig(fl.configPath)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
@@ -97,8 +114,10 @@ func run(fl cliFlags) error {
 		cfg.Upstream.Host = host
 		cfg.Upstream.Port = port
 	}
+	if fl.listen != "" {
+		cfg.Listen = fl.listen
+	}
 
-	// docs/architecture.md §4.4.6: ensure logs/records dirs exist (fail-soft).
 	if err := os.MkdirAll(cfg.Logging.Dir, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "mkdir logs warning: %v\n", err)
 	}
@@ -116,34 +135,46 @@ func run(fl cliFlags) error {
 	}
 	defer log.Close()
 
-	addr := net.JoinHostPort(cfg.Upstream.Host, strconv.Itoa(cfg.Upstream.Port))
+	upstreamAddr := net.JoinHostPort(cfg.Upstream.Host, strconv.Itoa(cfg.Upstream.Port))
 	log.Info("gateway starting",
 		zap.String("version", version),
 		zap.String("baseDir", baseDir),
 		zap.String("config", fl.configPath),
 		zap.Bool("mock", fl.mockMode),
-		zap.String("upstream", addr),
+		zap.String("replay", fl.replayPath),
+		zap.String("upstream", upstreamAddr),
 		zap.String("record", fl.recordPath),
+		zap.String("listen", cfg.Listen),
 		zap.String("logs", cfg.Logging.Dir),
 		zap.String("records", cfg.Records.Dir))
 
-	// Open the source.
-	var src source.Source
-	if fl.mockMode {
-		src = mock.New()
-		log.Info("source: mock (--mock)")
-	} else {
-		bo := upstream.NewBackoff(
-			time.Duration(cfg.Upstream.Reconnect.InitialMs)*time.Millisecond,
-			time.Duration(cfg.Upstream.Reconnect.MaxMs)*time.Millisecond,
-			cfg.Upstream.Reconnect.JitterRatio,
-		)
-		src = realsrc.New(addr, bo, log.Logger)
-		log.Info("source: real (TCP)", zap.String("addr", addr))
+	// Hub for WS fan-out.
+	h := hub.New(log.Logger,
+		cfg.Server.MaxClients,
+		cfg.Server.ClientBufferLen)
+	defer h.Close()
+
+	// HTTP server with embedded SPA.
+	webFS, err := webassets.FS()
+	if err != nil {
+		return fmt.Errorf("webassets: %w", err)
+	}
+	httpServer := httpsrv.New(httpsrv.Config{
+		Addr:    cfg.Listen,
+		Version: version,
+		WebFS:   webFS,
+		LogPath: filepath.Join(cfg.Logging.Dir, "gateway.log"),
+	}, h, log.Logger)
+
+	// Source.
+	src, initialState, err := openSource(fl, cfg, upstreamAddr, log.Logger)
+	if err != nil {
+		return err
 	}
 	defer src.Close()
+	httpServer.SetUpstreamState(initialState)
 
-	// Open the recorder if --record was given.
+	// Recorder, optional.
 	var rec *recorder.Recorder
 	if fl.recordPath != "" {
 		recPath := fl.recordPath
@@ -162,14 +193,111 @@ func run(fl cliFlags) error {
 			zap.String("timing_csv", recPath+".timing.csv"))
 	}
 
-	// Signal-driven shutdown.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	return readLoop(ctx, src, rec, log.Logger)
+	// Spin up the HTTP server.
+	httpDone := make(chan error, 1)
+	go func() {
+		err := httpServer.ListenAndServe()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			httpDone <- err
+			return
+		}
+		httpDone <- nil
+	}()
+
+	// Drive the upstream loop. On signal cancellation it returns nil and
+	// we proceed to shutdown. On replay-EOF it also returns nil but ctx
+	// is still alive — in that case we keep the HTTP server running so
+	// already-connected clients stay up (Issue #52: "hub stays alive on
+	// replay finish"). Final shutdown is driven by ctx cancellation.
+	loopErr := readLoop(ctx, src, rec, h, httpServer, initialState, log.Logger)
+	if loopErr == nil && ctx.Err() == nil {
+		log.Info("source finished; HTTP server remains up — Ctrl+C to stop")
+		<-ctx.Done()
+	}
+
+	// Now actually shut down.
+	cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		log.Warn("http shutdown error", zap.Error(err))
+	}
+
+	// Wait for the http goroutine to exit. Any non-Closed error is fatal.
+	select {
+	case herr := <-httpDone:
+		if herr != nil && loopErr == nil {
+			return herr
+		}
+	case <-time.After(2 * time.Second):
+		log.Warn("http server did not exit within 2s")
+	}
+
+	return loopErr
 }
 
-func readLoop(ctx context.Context, src source.Source, rec *recorder.Recorder, log *zap.Logger) error {
+// validateSourceFlags enforces the documented exclusivity rules.
+//
+//	--mock and --replay are mutually exclusive (both replace the upstream
+//	source). --record is also exclusive with both, per the Issue #3
+//	completion criteria — recording while mocking/replaying re-records
+//	the same data and is more confusing than useful.
+func validateSourceFlags(fl cliFlags) error {
+	exclusive := []string{}
+	if fl.mockMode {
+		exclusive = append(exclusive, "--mock")
+	}
+	if fl.replayPath != "" {
+		exclusive = append(exclusive, "--replay")
+	}
+	if fl.recordPath != "" {
+		exclusive = append(exclusive, "--record")
+	}
+	if len(exclusive) > 1 {
+		return fmt.Errorf("flags %v are mutually exclusive — pick exactly one", exclusive)
+	}
+	return nil
+}
+
+// openSource constructs the right source.Source based on the flags.
+// Returns the source plus the initial UpstreamState to publish to /healthz.
+func openSource(fl cliFlags, cfg config.Config, upstreamAddr string, log *zap.Logger) (source.Source, httpsrv.UpstreamState, error) {
+	switch {
+	case fl.mockMode:
+		log.Info("source: mock (--mock)")
+		return mock.New(), httpsrv.UpstreamMock, nil
+	case fl.replayPath != "":
+		log.Info("source: replay", zap.String("path", fl.replayPath),
+			zap.String("speed", cfg.Replay.Speed))
+		s, err := replay.New(fl.replayPath, cfg.Replay.Speed, log)
+		if err != nil {
+			return nil, "", fmt.Errorf("--replay: %w", err)
+		}
+		return s, httpsrv.UpstreamReplay, nil
+	default:
+		bo := upstream.NewBackoff(
+			time.Duration(cfg.Upstream.Reconnect.InitialMs)*time.Millisecond,
+			time.Duration(cfg.Upstream.Reconnect.MaxMs)*time.Millisecond,
+			cfg.Upstream.Reconnect.JitterRatio,
+		)
+		log.Info("source: real (TCP)", zap.String("addr", upstreamAddr))
+		return realsrc.New(upstreamAddr, bo, log), httpsrv.UpstreamConnecting, nil
+	}
+}
+
+func readLoop(
+	ctx context.Context,
+	src source.Source,
+	rec *recorder.Recorder,
+	h *hub.Hub,
+	srv *httpsrv.Server,
+	initialState httpsrv.UpstreamState,
+	log *zap.Logger,
+) error {
+	var firstChunkOnce sync.Once
 	for {
 		chunk, err := src.Read(ctx)
 		if err != nil {
@@ -178,23 +306,28 @@ func readLoop(ctx context.Context, src source.Source, rec *recorder.Recorder, lo
 				return nil
 			}
 			if errors.Is(err, io.EOF) {
-				log.Info("source EOF, exiting")
+				log.Info("replay finished")
+				srv.SetUpstreamState(httpsrv.UpstreamFinished)
 				return nil
 			}
 			log.Warn("source read error", zap.Error(err))
-			// Sources are expected to recover internally; if Read returns a
-			// fresh error here we still loop until ctx is cancelled.
 			continue
 		}
+		// First successful read flips real upstream from "connecting"
+		// to "connected". Mock / replay keep their own label.
+		firstChunkOnce.Do(func() {
+			if initialState == httpsrv.UpstreamConnecting {
+				srv.SetUpstreamState(httpsrv.UpstreamConnected)
+			}
+		})
 		if rec != nil {
 			rec.Write(chunk)
 		}
+		h.Broadcast(chunk)
 	}
 }
 
 // exeDir returns the directory containing the running executable.
-// `go run` produces a temp executable; in that case the returned path is the
-// temp dir, which is acceptable for development.
 func exeDir() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -202,7 +335,6 @@ func exeDir() (string, error) {
 	}
 	resolved, err := filepath.EvalSymlinks(exe)
 	if err != nil {
-		// On Windows symlinks are uncommon for installed apps; fall back.
 		resolved = exe
 	}
 	return filepath.Dir(resolved), nil
@@ -217,7 +349,6 @@ func ensureConfigFile(path, baseDir string) error {
 	}
 	example := filepath.Join(baseDir, "config.example.json")
 	if _, err := os.Stat(example); err != nil {
-		// No example to copy from; let the caller fall back to defaults.
 		return nil
 	}
 	src, err := os.Open(example)
@@ -239,14 +370,11 @@ func ensureConfigFile(path, baseDir string) error {
 func loadConfig(path string) (config.Config, error) {
 	cfg, err := config.LoadFile(path)
 	if err != nil && os.IsNotExist(err) {
-		// No config file at all — use defaults.
 		return config.Defaults(), nil
 	}
 	return cfg, err
 }
 
-// splitHostPort accepts "host:port" (IPv4 / hostname) and returns the parts.
-// IPv6 with brackets ("[::1]:5403") is also handled by net.SplitHostPort.
 func splitHostPort(s string) (string, int, error) {
 	host, portStr, err := net.SplitHostPort(s)
 	if err != nil {
