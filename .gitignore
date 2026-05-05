@@ -2,6 +2,12 @@
 dist/
 *.exe
 
+# Captured raw data (privacy) — third-party transponder numbers must be
+# anonymized via gateway/cmd/anonymize before being committed under
+# gateway/testdata/captured/. See docs/test-strategy.md §7.4.
+/gateway/testdata/captured/raw/
+*-raw.bin
+
 # Editor / OS
 .DS_Store
 Thumbs.db

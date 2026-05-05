@@ -181,7 +181,7 @@
 
 ### 5.3 Record の運用
 - ファイル命名: `record__YYYYMMDD_HHMMSS__<note>.bin`
-- 個人情報・トランスポンダー番号など機微なものは含まれないと想定するが、コミット前に確認する文化を `docs/development-workflow.md` に追記候補(別 Issue 化検討)
+- 採取生データ(特に第三者トランスポンダーを含むもの)の取り扱いは §7.4.1 を参照。**生 `.bin` のリポジトリ直接コミットは原則禁止**、匿名化を経由する。
 
 ---
 
@@ -321,14 +321,57 @@
 
 ### 7.4 持ち帰り後の作業
 
-1. **機微情報の確認**: コミット前に `records\session-*.bin` をスキャン:
-   - トランスポンダー番号が含まれている可能性があるが、本プロジェクトは個人練習用途で固有番号は本人のみ。**他人のポンダーが混入していないか**(`PASSING_NUMBER` が複数ポンダー由来になっていないか)を確認
-   - 個人を特定する情報は他にない想定だが、ファイルサイズが大きい場合は LFS 検討
-2. **配置**: `gateway/testdata/captured/session-<YYYY-MM-DD>__<note>.bin` と `.timing.csv` をコミット
-3. **観察メモの追記**: §7.3 テンプレートを埋めたものを `docs/captured-sessions/session-<date>.md` として追加(別 PR)
-4. **`docs/protocol-p3.md` §9 の更新**: 観察結果を別 PR で反映
-   - 例: 「Frame Length は SOR を含む全フレーム長(エスケープ後)」「`RTC_TIME` の単位は ms」など
-5. **派生 Issue の起票**: 採取データから新たに見つかった事項(未知 TOR、想定外フィールド ID 等)を Issue 化
+採取セッションが終わったら、まず privacy 面の処理を済ませてからリポジトリへ反映する。
+
+#### 7.4.1 第三者 TRANSPONDER 混入時の匿名化(必須)
+
+テスト中は採取者本人が走行できないため、採取データには **第三者のトランスポンダーが含まれる** ことが通常。AMB トランスポンダー番号は MyLaps アカウントと結びつく個人識別子に近いため、**第三者を含むデータは必ず匿名化してからコミット**する。
+
+- 生 `.bin` は `dist/` 配下 or リポジトリ外のローカル保管のみ。**`.gitignore` で永続的にコミット禁止**(§7.4.2 参照)。
+- 匿名化は `gateway/cmd/anonymize` を使い、TRANSPONDER 値を観測順に `0x00000001`, `0x00000002`, ... に再マッピング。それ以外の TLV(`PASSING_NUMBER` / `RTC_TIME` / `STRENGTH` / `HITS` / `FLAGS` / `DECODER_ID` 等)とヘッダ情報は **一切変更しない**。
+- 匿名化前→後のマッピング表は **コミットしない**(repo に置かない)。`anonymize` ツールの出力は stdout のみで、ファイル化されないようになっている。クロスセッション相関が必要な場合のみ操作員が手元のローカルメモに保管する。
+- byte 構造テスト・filter ロジックテスト・RTC_TIME 単位推定 はすべて anonymized データで成立する。
+- CRC は再計算しない(`docs/protocol-p3.md` §6 で「初期実装は検証スキップ」方針、broken CRC は許容)。ヘッダの `FrameLength` も再計算せず、original の値をそのまま残す(escape 解除 / 再構成によりフレームの wire 長は数 byte 変化しうる)。
+
+実行例(Windows):
+
+```pwsh
+go run .\gateway\cmd\anonymize `
+    -in  "..\dist\AMB_RC_Lap_Timer\records\session-2026-05-05.bin" `
+    -out "gateway\testdata\captured\session-2026-05-05.bin"
+```
+
+#### 7.4.2 `.gitignore` ルール
+
+生採取データの誤コミットを防ぐため、リポジトリの `.gitignore` に以下を含める:
+
+```
+/gateway/testdata/captured/raw/
+*-raw.bin
+/dist/
+```
+
+`gateway/testdata/captured/` 直下の `.bin` は **anonymized 版のみ許可**(レビュー時に手動チェック)。生データを保持したい場合は `gateway/testdata/captured/raw/` か `*-raw.bin` のサフィックスを使う。
+
+#### 7.4.3 配置
+
+匿名化済み `.bin` を `gateway/testdata/captured/session-<YYYY-MM-DD>__<note>.bin` としてコミット。
+今回(2026-05-05)のように timing.csv 側が破損しているセッションでは `.timing.csv` はコミットせず、`docs/incidents/` に経緯を残す。
+
+#### 7.4.4 観察メモの追記
+
+§7.3 テンプレートを埋めたものを `docs/captured-sessions/<YYYY-MM-DD>.md` として追加(別 PR でも OK)。**マッピング表は本ファイルにも書かない**。
+
+#### 7.4.5 `docs/protocol-p3.md` §9 の更新
+
+観察結果を別 PR で反映:
+
+- 例: 「Frame Length は SOR を含む全フレーム長(エスケープ後)」「`RTC_TIME` の単位は ms」など。
+- 匿名化後のデータでも、Frame Length / RTC_TIME / Header CRC など、TRANSPONDER 値以外の項目はすべて検証可能。
+
+#### 7.4.6 派生 Issue の起票
+
+採取データから新たに見つかった事項(未知 TOR、想定外フィールド ID 等)を Issue 化。
 
 ---
 
