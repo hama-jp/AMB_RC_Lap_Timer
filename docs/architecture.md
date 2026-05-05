@@ -102,8 +102,8 @@
 | `/`        | GET      | SPA 配信(`index.html` ほか static) |
 | `/assets/*`| GET      | SPA の静的アセット |
 | `/ws`      | WS       | デコーダーから受信した素のバイト列を fan-out。**JSON 化はしない**(byte pipe) |
-| `/admin`   | GET/POST | 設定 WebUI(後続)。設定を変更すると `config.json` に反映 + 反映通知 |
-| `/healthz` | GET      | `{"upstream":"connected","clients":2,"uptime_sec":1234}` 形式の JSON |
+| `/admin`   | GET      | **#3 ではスタブ**(プレースホルダー HTML を返す)。本実装(設定編集 WebUI、`config.json` 反映 + 反映通知)は #8 |
+| `/healthz` | GET      | `{"upstream":"connected","clients":2,"uptime_sec":1234,"version":"<v>"}` 形式の JSON。`upstream` は `connecting`/`connected`/`mock`/`replay`/`finished` のいずれか |
 | `/logs`    | GET      | 直近の log を ndjson もしくはプレーンで返す(認証なし、LAN 専用前提) |
 
 ### 3.2 WebSocket メッセージ
@@ -150,6 +150,10 @@ gateway.exe [--config <path>] [--mock | --replay <file> | --record <file>] [--li
   },
   "records": {
     "dir": "./records"
+  },
+  "server": {
+    "max_clients": 100,        // safety cap (Issue #31; target ≈ 10)
+    "client_buffer_len": 64    // per-client ring depth (Issue #27)
   }
 }
 ```

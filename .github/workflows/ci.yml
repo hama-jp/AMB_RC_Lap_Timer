@@ -44,7 +44,34 @@ jobs:
         run: go test -race -count=1 ./...
 
       - name: go build
-        run: go build ./cmd/gateway
+        run: go build -o gateway-bin ./cmd/gateway
+
+      - name: smoke (--mock + /healthz)
+        run: |
+          set -euo pipefail
+          ./gateway-bin --mock --listen :18080 &
+          GW_PID=$!
+          # Give the server a moment to bind.
+          for i in $(seq 1 20); do
+            if curl -fsS http://localhost:18080/healthz >/tmp/h.json 2>/dev/null; then
+              break
+            fi
+            sleep 0.2
+          done
+          if [ ! -s /tmp/h.json ]; then
+            echo "::error::/healthz never responded"
+            kill -TERM $GW_PID || true
+            wait $GW_PID || true
+            exit 1
+          fi
+          echo "/healthz response:"; cat /tmp/h.json; echo
+          # Sanity-check the JSON shape.
+          grep -q '"upstream":"mock"' /tmp/h.json
+          grep -q '"version":"' /tmp/h.json
+          # Stop the gateway.
+          kill -INT $GW_PID
+          wait $GW_PID
+          echo "smoke OK"
 
   web:
     runs-on: ubuntu-latest
