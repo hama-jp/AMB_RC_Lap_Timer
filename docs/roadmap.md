@@ -38,7 +38,7 @@
   ✅ ★   実 LAN 現地データ採取セッション                                      (2026-05-05 / fixture #46 #49 merged)
   ✅ #2  P3 パーサ TS 実装                                                  ← 本 PR で完了
   ✅ #3  gateway-full(WS fan-out + go:embed + /healthz + /admin スタブ + --replay)   ← 本 PR で完了
-  ⏳ #4  SPA 骨格
+  ✅ #4  SPA 骨格
   ⏳ #5  ラップ計算と表示
   ⏳ #6  音声読み上げ
   ⏳ ★   Field Test α(Smoke + Multi-client)
@@ -151,6 +151,8 @@
 
 ### #4 SPA 骨格
 **目的**: ブラウザ側のアプリケーション基盤を整える。
+
+**状態**: ✅ 完了(#55〜#59)。React SPA、WS クライアント、localStorage 設定、状態バナー、PASSING フィルタリスト、`/healthz` version 表示まで結合済み。
 
 **スコープ**:
 - React + TS + Tailwind(採用済み: #4-A / #55、状態管理は標準 hooks のみ)

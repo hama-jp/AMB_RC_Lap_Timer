@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 
+import { LapList } from '../features/laps/LapList';
 import { SettingsPage } from '../features/settings/SettingsPage';
+import type { WsClient } from '../transport/wsClient';
 
 type AppRoute = '/' | '/settings';
 
@@ -13,7 +15,11 @@ function getCurrentRoute(): AppRoute {
   return normalizeHash(window.location.hash);
 }
 
-export function AppRouter(): JSX.Element {
+export interface AppRouterProps {
+  readonly wsClient: WsClient;
+}
+
+export function AppRouter({ wsClient }: AppRouterProps): JSX.Element {
   const [route, setRoute] = useState<AppRoute>(() => getCurrentRoute());
 
   useEffect(() => {
@@ -32,14 +38,5 @@ export function AppRouter(): JSX.Element {
     return <SettingsPage />;
   }
 
-  return (
-    <section className="rounded-md border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-300">
-      <p>
-        このページが表示されているということは、
-        <code className="font-mono text-slate-100">scripts/build.ps1</code> →{' '}
-        <code className="font-mono text-slate-100">go:embed</code> →{' '}
-        <code className="font-mono text-slate-100">gateway.exe</code> の流れが繋がっています。
-      </p>
-    </section>
-  );
+  return <LapList wsClient={wsClient} />;
 }
