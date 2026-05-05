@@ -1,5 +1,6 @@
 // Command analyze is a one-off helper to inspect a captured AMB P3 .bin file.
-// Used to verify what was actually recorded after the 2026-05-05 incident.
+// Used to verify what was actually recorded after the 2026-05-05 incident
+// and as a sanity check after running cmd/anonymize.
 //
 // Not part of the production gateway; safe to delete after the investigation.
 package main
@@ -8,6 +9,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+
+	"github.com/hama-jp/AMB_RC_Lap_Timer/gateway/internal/p3frame"
 )
 
 func main() {
@@ -22,44 +25,25 @@ func main() {
 	}
 	fmt.Printf("file size: %d bytes\n\n", len(data))
 
-	// Split at 0x8F 0x8E boundaries (record separator).
-	// Then verify each piece starts with 0x8E and ends with 0x8F.
-	frames := splitFrames(data)
+	frames := p3frame.Split(data)
 	fmt.Printf("frames found: %d\n", len(frames))
 
 	torCounts := map[uint16]int{}
-	totalBody := 0
-	var firstFrame, lastFrame int = -1, -1
 
 	for i, f := range frames {
-		body := unescape(f)
-		if len(body) < 10 {
+		body := p3frame.Unescape(f)
+		h, ok := p3frame.ParseHeader(body)
+		if !ok {
 			fmt.Printf("frame %d: too short (%d bytes)\n", i, len(body))
 			continue
 		}
-		ver := body[1]
-		flen := uint16(body[2]) | uint16(body[3])<<8
-		crc := uint16(body[4]) | uint16(body[5])<<8
-		flags := uint16(body[6]) | uint16(body[7])<<8
-		tor := uint16(body[8]) | uint16(body[9])<<8
-		torCounts[tor]++
-		totalBody += len(body)
-		if firstFrame == -1 {
-			firstFrame = i
-		}
-		lastFrame = i
-		_ = ver
-		_ = flen
-		_ = crc
-		_ = flags
+		torCounts[h.TOR]++
 		if i < 3 || i >= len(frames)-2 {
 			fmt.Printf("frame %d: ver=0x%02x flen=%d crc=0x%04x flags=0x%04x TOR=0x%04x bodylen=%d\n",
-				i, ver, flen, crc, flags, tor, len(body))
+				i, h.Version, h.FrameLength, h.CRC, h.Flags, h.TOR, len(body))
 			fmt.Printf("  hex: %s\n", hex.EncodeToString(body))
 		}
 	}
-	_ = firstFrame
-	_ = lastFrame
 
 	fmt.Println()
 	fmt.Println("TOR distribution:")
@@ -73,115 +57,30 @@ func main() {
 	fmt.Println("PASSING records:")
 	passingIdx := 0
 	for _, f := range frames {
-		body := unescape(f)
-		if len(body) < 10 {
-			continue
-		}
-		tor := uint16(body[8]) | uint16(body[9])<<8
-		if tor != 0x0001 {
+		body := p3frame.Unescape(f)
+		h, ok := p3frame.ParseHeader(body)
+		if !ok || h.TOR != p3frame.TORPassing {
 			continue
 		}
 		passingIdx++
 		fmt.Printf("  PASSING #%d:\n", passingIdx)
-		decodeTLV(body[10 : len(body)-1])
+		p3frame.WalkTLV(body, func(id, flen byte, val []byte) bool {
+			fmt.Printf("    id=0x%02x len=%d val=%s   %s\n",
+				id, flen, hex.EncodeToString(val), passingFieldName(id))
+			return true
+		})
 	}
-}
-
-func decodeTLV(b []byte) {
-	for i := 0; i < len(b); {
-		if i+2 > len(b) {
-			break
-		}
-		id := b[i]
-		flen := int(b[i+1])
-		if i+2+flen > len(b) {
-			break
-		}
-		val := b[i+2 : i+2+flen]
-		fmt.Printf("    id=0x%02x len=%d val=%s   %s\n",
-			id, flen, hex.EncodeToString(val), passingFieldName(id))
-		i += 2 + flen
-	}
-}
-
-func passingFieldName(id byte) string {
-	switch id {
-	case 0x01:
-		return "PASSING_NUMBER"
-	case 0x03:
-		return "TRANSPONDER"
-	case 0x04:
-		return "RTC_TIME"
-	case 0x05:
-		return "STRENGTH"
-	case 0x06:
-		return "HITS"
-	case 0x08:
-		return "FLAGS"
-	case 0x0A:
-		return "TRAN_CODE"
-	case 0x10:
-		return "UTC_TIME"
-	case 0x81:
-		return "DECODER_ID (general)"
-	}
-	return ""
-}
-
-func splitFrames(data []byte) [][]byte {
-	var frames [][]byte
-	start := -1
-	for i := 0; i < len(data); i++ {
-		b := data[i]
-		if start == -1 {
-			if b == 0x8E {
-				start = i
-			}
-			continue
-		}
-		// inside a frame
-		if b == 0x8F {
-			frames = append(frames, data[start:i+1])
-			start = -1
-		}
-	}
-	return frames
-}
-
-func unescape(frame []byte) []byte {
-	if len(frame) < 2 {
-		return frame
-	}
-	// frame includes SOR at [0] and EOR at [last]. Inner is everything between.
-	inner := frame[1 : len(frame)-1]
-	out := make([]byte, 0, len(inner)+2)
-	out = append(out, 0x8E)
-	escape := false
-	for _, b := range inner {
-		if escape {
-			out = append(out, b-0x20)
-			escape = false
-			continue
-		}
-		if b == 0x8D {
-			escape = true
-			continue
-		}
-		out = append(out, b)
-	}
-	out = append(out, 0x8F)
-	return out
 }
 
 func torName(tor uint16) string {
 	switch tor {
 	case 0x0000:
 		return "RESET"
-	case 0x0001:
+	case p3frame.TORPassing:
 		return "PASSING ★"
-	case 0x0002:
+	case p3frame.TORStatus:
 		return "STATUS"
-	case 0x0003:
+	case p3frame.TORVersion:
 		return "VERSION"
 	case 0x0004:
 		return "RESEND"
@@ -215,4 +114,28 @@ func torName(tor uint16) string {
 		return "ERROR"
 	}
 	return "(undocumented)"
+}
+
+func passingFieldName(id byte) string {
+	switch id {
+	case p3frame.PassingPassingNumber:
+		return "PASSING_NUMBER"
+	case p3frame.PassingTransponder:
+		return "TRANSPONDER"
+	case p3frame.PassingRTCTime:
+		return "RTC_TIME"
+	case p3frame.PassingStrength:
+		return "STRENGTH"
+	case p3frame.PassingHits:
+		return "HITS"
+	case p3frame.PassingFlags:
+		return "FLAGS"
+	case 0x0A:
+		return "TRAN_CODE"
+	case 0x10:
+		return "UTC_TIME"
+	case p3frame.GeneralDecoderID:
+		return "DECODER_ID (general)"
+	}
+	return ""
 }
