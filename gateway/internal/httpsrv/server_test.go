@@ -326,20 +326,23 @@ func TestWS_ManyClients_HighWatermark(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	conns := make([]*websocket.Conn, 0, want)
+	// Pre-allocate one slot per dialer so each goroutine writes to its
+	// own index — appending to a shared slice from multiple goroutines is
+	// a data race (caught by -race in CI).
+	conns := make([]*websocket.Conn, want)
 	var wg sync.WaitGroup
 	errs := make(chan error, want)
 	for i := 0; i < want; i++ {
 		wg.Add(1)
-		go func() {
+		go func(idx int) {
 			defer wg.Done()
 			c, _, err := websocket.Dial(ctx, wsURL, nil)
 			if err != nil {
 				errs <- err
 				return
 			}
-			conns = append(conns, c)
-		}()
+			conns[idx] = c
+		}(i)
 	}
 	wg.Wait()
 	close(errs)
@@ -356,6 +359,8 @@ func TestWS_ManyClients_HighWatermark(t *testing.T) {
 	}
 
 	for _, c := range conns {
-		c.Close(websocket.StatusNormalClosure, "")
+		if c != nil { // dial may have failed; skip nil slots
+			c.Close(websocket.StatusNormalClosure, "")
+		}
 	}
 }
