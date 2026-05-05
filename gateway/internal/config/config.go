@@ -24,6 +24,21 @@ type Config struct {
 	Upstream UpstreamConfig `json:"upstream"`
 	Logging  LoggingConfig  `json:"logging"`
 	Records  RecordsConfig  `json:"records"`
+	Listen   string         `json:"listen"`
+	Replay   ReplayConfig   `json:"replay"`
+	Server   ServerConfig   `json:"server"`
+}
+
+// ReplayConfig controls --replay <file> playback behaviour.
+// Speed = "realtime" | "fast" | "instant" (docs/architecture.md §3.4).
+type ReplayConfig struct {
+	Speed string `json:"speed"`
+}
+
+// ServerConfig caps WebSocket fan-out (docs/architecture.md §3.1, Issue #31 / #27).
+type ServerConfig struct {
+	MaxClients      int `json:"max_clients"`
+	ClientBufferLen int `json:"client_buffer_len"`
 }
 
 // UpstreamConfig describes the AMB decoder TCP endpoint.
@@ -76,6 +91,14 @@ func Defaults() Config {
 		},
 		Records: RecordsConfig{
 			Dir: "./records",
+		},
+		Listen: ":8080",
+		Replay: ReplayConfig{
+			Speed: "realtime",
+		},
+		Server: ServerConfig{
+			MaxClients:      100,
+			ClientBufferLen: 64,
 		},
 	}
 }

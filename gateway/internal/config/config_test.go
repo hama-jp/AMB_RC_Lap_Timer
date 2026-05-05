@@ -78,14 +78,38 @@ func TestLoad_PartialOverride_KeepsOtherDefaults(t *testing.T) {
 }
 
 func TestLoad_IgnoreUnknownFields(t *testing.T) {
-	// listen / replay are scheduled for #3 / #7 and must not break loading.
-	in := `{ "listen": ":8080", "replay": { "speed": "fast" }, "future": { "x": 1 } }`
+	// Forward-compat: unknown top-level fields scheduled for later phases
+	// must not break loading. Use names that are NOT in the current schema.
+	in := `{ "future_phase_8": { "x": 1 }, "experimental": "yes" }`
 	got, err := Load(strings.NewReader(in))
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
 	if got != Defaults() {
 		t.Errorf("unknown fields changed config: %+v", got)
+	}
+}
+
+func TestLoad_NewFieldsLoad(t *testing.T) {
+	// listen / replay.speed / server.max_clients are part of the gateway-full
+	// (#3) schema. Verify they overlay Defaults() correctly.
+	in := `{
+		"listen": ":9090",
+		"replay": { "speed": "fast" },
+		"server": { "max_clients": 25, "client_buffer_len": 128 }
+	}`
+	got, err := Load(strings.NewReader(in))
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if got.Listen != ":9090" {
+		t.Errorf("listen: got %q want :9090", got.Listen)
+	}
+	if got.Replay.Speed != "fast" {
+		t.Errorf("replay.speed: got %q want fast", got.Replay.Speed)
+	}
+	if got.Server.MaxClients != 25 || got.Server.ClientBufferLen != 128 {
+		t.Errorf("server: got %+v want {25, 128}", got.Server)
 	}
 }
 
