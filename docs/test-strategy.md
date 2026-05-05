@@ -426,7 +426,7 @@ go run .\gateway\cmd\anonymize `
 
 | # | 項目 | 解消タイミング |
 |---|------|----------------|
-| 1 | フィクスチャ期待値 JSON のスキーマ確定 | パーサ PR(#2) |
+| 1 | ~~フィクスチャ期待値 JSON のスキーマ確定~~ → **確定**: `gateway/testdata/captured/<session>.expected.json` で以下の形に固定。BigInt は string で表現。`web` パーサ PR(#2)で `session-2026-05-05.expected.json` を生成・コミット済み。 |
 | 2 | `gateway/testdata/` と `web/tests/fixtures/` の同期手段(symlink / コピー / ビルド) | gateway-full PR(#3) |
 | 3 | ~~`--replay` のタイミングデータ(`.timing.csv`)形式の確定~~ → **確定**: ヘッダ `offset_ms,length_bytes` の 2 列 CSV、`offset_ms` は接続成功時刻からの経過 ms、1 受信チャンクにつき 1 行(gateway-recorder PR で確定) |
 | 4 | ~~`golangci-lint` / `testify` 採否~~ → **不採用**(本 PR 時点)。`gofmt -s` + `go vet` + 標準 `testing` のテーブル駆動で十分。将来テストコードが拡大したら再検討(別 Issue で起票候補) |
@@ -438,7 +438,38 @@ go run .\gateway\cmd\anonymize `
 
 ---
 
+### 11.1 期待値 JSON スキーマ(§11 #1 解消)
+
+```json
+{
+  "fixture": "gateway/testdata/captured/session-<YYYY-MM-DD>.bin",
+  "frameCount": 58,
+  "torDistribution": { "0x0001": 15, "0x0002": 42, "0x001C": 1 },
+  "passingRecords": [
+    {
+      "passingNumber": 1148387,
+      "transponder": 1,
+      "rtcTimeUs": "1777985972473000",
+      "strength": 167,
+      "hits": 144,
+      "flags": 0,
+      "decoderId": 269591
+    }
+  ],
+  "statusRecordCount": 42,
+  "unknownTors": [{ "tor": "0x001C", "frameIndex": 0 }],
+  "malformedCount": 0
+}
+```
+
+- `rtcTimeUs` は uint64 → BigInt のため、JSON portability のために **string** で表現する。
+- `torDistribution` のキーは `0x` + 4 桁 hex(大文字)。
+- 生成は `web/scripts/dump-expected.ts`(本リポジトリの `web` パッケージ)で行う。
+
+---
+
 ## 12. 改訂履歴
+- v0.1.4 (2026-05-05): §11 #1 を解消。`gateway/testdata/captured/<session>.expected.json` のスキーマを §11.1 として正式化。BigInt は string 表現。`web` パーサ PR(#2)で session-2026-05-05.expected.json を生成・コミット。
 - v0.1.3 (2026-05-04): §11 #3 / #4 を gateway-recorder PR の確定事項で更新。`.timing.csv` 形式は `offset_ms,length_bytes` 2 列で確定(#3)、`golangci-lint` / `testify` は本 PR 時点では不採用とし、必要時に別 Issue 起票で再検討(#4)。
 - v0.1.2 (2026-05-04): §6.2 シナリオに **USB 起動 / USB 抜き挿し / FAT32 配置** を追加。§6.3 α/β の必須シナリオに USB 起動 / 抜き挿し / FAT32 配置を組み込み。`docs/architecture.md` §4.4(ポータブル運用)と整合。
 - v0.1.1 (2026-05-04): §1.1 ピラミッドに Field Test 層を追加。§6 Field Test(実 LAN)、§7 現地データ採取セッション手順を新設。§11 にオープン項目 #8 / #9(`tools/fieldtest/`、`field-test-log.md`)を追加。

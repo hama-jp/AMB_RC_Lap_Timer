@@ -35,8 +35,8 @@
 
 [実装フェーズ]
   ✅ #1  gateway-recorder MVP                                               (PR #39 merged)
-  ⌛ ★   実 LAN 現地データ採取セッション                                       ← 次のアクション
-  ⏳ #2  P3 パーサ TS 実装
+  ✅ ★   実 LAN 現地データ採取セッション                                      (2026-05-05 / fixture #46 #49 merged)
+  ✅ #2  P3 パーサ TS 実装                                                  ← 本 PR で完了
   ⏳ #3  gateway-full(WS fan-out + go:embed + /healthz + /admin)
   ⏳ #4  SPA 骨格
   ⏳ #5  ラップ計算と表示
