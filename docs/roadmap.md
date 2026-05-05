@@ -153,7 +153,7 @@
 **目的**: ブラウザ側のアプリケーション基盤を整える。
 
 **スコープ**:
-- React + TS + Tailwind(暫定。R6 で確定)
+- React + TS + Tailwind(採用済み: #4-A / #55、状態管理は標準 hooks のみ)
 - `web/src/transport/`: WebSocket クライアント、再接続バックオフ
 - レイアウト最低限(ヘッダ/状態表示/設定リンク)
 - Vite 開発サーバ + ゲートウェイ間の WS プロキシ
@@ -197,7 +197,7 @@
 | WebSocket ライブラリ(Go) | [#33](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/33) | #3 | `nhooyr.io/websocket` 候補 |
 | ~~ロガー(Go 1.20、`slog` 不可)~~ | ✅ [#34](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/34) | **#1 で確定** | `uber-go/zap` + `lumberjack.v2`(PR #39) |
 | WS バックプレッシャ方針 | [#27](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/27) | #3 | 古いフレーム破棄 + 警告ログ(暫定) |
-| UI フレームワーク | [#32](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/32) | #4 | React + TS + Tailwind(暫定) |
+| ~~UI フレームワーク~~ | ✅ [#32](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/32) | **#4-A / #55 で確定** | React + TS + Tailwind + 標準 hooks |
 | iOS Safari Speech のユーザー操作要件 | [#26](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/26) | #6 | 起動画面で「読み上げを許可」ボタン |
 | 上流接続状態の UI 表現 | [#28](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/28) | #3-#5 | WS テキストフレームで通知 + バナー |
 | WS クライアント再接続 UX | [#29](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/29) | #4 | 指数バックオフ + バナー表示 |
