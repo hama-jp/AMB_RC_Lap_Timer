@@ -1,18 +1,19 @@
 /// <reference types="vitest" />
-import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
-// Library mode build — the SPA wrapper (Issue #4) will import @amb-rc-lap-timer/web
-// later. Until then, the build artifact is just the protocol parser bundle so we
-// can verify the parser has no Node-only API leaking into production output.
+// SPA mode (Issue #55, parent #4): Vite serves index.html as the entry,
+// builds a hashed asset bundle, and outputs to web/dist/. scripts/build.ps1
+// then copies that into gateway/internal/webassets/dist/ for go:embed.
+//
+// Tests run with the protocol/ unit suites (Node env) plus the React app
+// component tests (jsdom env). Vitest picks the env per-file via a docblock
+// pragma; the workspace default is jsdom for *.test.tsx and node for the
+// existing *.test.ts under tests/protocol/.
 export default defineConfig({
+  appType: 'spa',
+  plugins: [react()],
   build: {
-    lib: {
-      entry: resolve(__dirname, 'src/protocol/index.ts'),
-      name: 'AmbP3',
-      fileName: (format) => `protocol.${format}.js`,
-      formats: ['es'],
-    },
     target: 'es2022',
     sourcemap: true,
     emptyOutDir: true,
@@ -20,6 +21,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
+    environmentMatchGlobs: [['tests/**/*.test.tsx', 'jsdom']],
   },
 });

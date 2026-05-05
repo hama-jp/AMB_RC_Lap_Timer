@@ -2,7 +2,7 @@
 
 本書はリポジトリ構成、配信トポロジ、ビルドフロー、ローカル開発手順を定義する。実装着手前の合意ドキュメントであり、以降の実装 PR は本書に従う。前提となる設計判断は `docs/gateway-technical-decision.md`、プロトコル仕様は `docs/protocol-p3.md` を参照。
 
-> Status: **Draft v0.1.4**
+> Status: **Draft v0.1.5**
 
 ---
 
@@ -406,12 +406,12 @@ go run ./cmd/gateway --mock --listen :8080
   - zap は Console / JSON エンコーダ両対応で §7 の「人間可読 + 構造化」要件を満たす
   - lumberjack は FAT32 上で安全な原子的 rename によるローテーションを提供し §4.4.4 を直接サポート
 
-### 6.2 Web 側の主要依存(候補)
-- `vite`, `typescript`
-- UI: React + TypeScript(初期想定。Vue/Svelte でも本書の構成は維持可能)
-- 状態管理: 軽量に保つ(初期は React の `useState` / Context、必要なら Zustand)
-- テスト: `vitest`
-- スタイリング: 後続のデザインフェーズで決定(Tailwind 等)
+### 6.2 Web 側の主要依存
+- ビルド: `vite`, `typescript`
+- UI: **React + TypeScript** を採用(#4-A / #55)。SPA は同梱配信とブラウザ単体動作を優先し、標準的な React 構成で固定する。
+- 状態管理: **React 標準 hooks** のみで開始する。グローバル store は必要性が出るまで導入しない。
+- テスト: `vitest` + `@testing-library/react`
+- スタイリング: **Tailwind CSS v3** を採用する。
 
 ### 6.3 バージョンピン留めの方針
 - Go: `gateway/go.mod` に `go 1.20` を明記
@@ -446,7 +446,7 @@ go run ./cmd/gateway --mock --listen :8080
 | # | 項目 | 担当ドキュメント / 担当 |
 |---|------|------------------------|
 | 1 | 採用する WebSocket ライブラリ確定(nhooyr / gorilla) | gateway-full PR(#3) |
-| 2 | フロントの UI フレームワーク確定(React 想定の検証含む) | SPA 骨格 PR(#4) |
+| 2 | ~~フロントの UI フレームワーク確定(React 想定の検証含む)~~ → **React + TypeScript + Tailwind CSS v3 + 標準 hooks を採用**(SPA 骨格 #4-A / #55) |
 | 3 | ~~ロガー選定(zap / 自前ラップ / その他)~~ → **`uber-go/zap` を採用**(gateway-recorder PR で確定、#34 クローズ) |
 | 4 | ~~`logs/` のローテーション仕様(`lumberjack` 等)~~ → **`gopkg.in/natefinch/lumberjack.v2` を採用**(`max_size_mb=5` / `max_backups=5` 既定、JSON 行で `<dir>/gateway.log` に出力、FAT32 上で原子的 rename ローテーション) |
 | 5 | ~~`--replay` の速度切替の細かい仕様~~ → 速度切替自体は replay PR(#7)で確定だが、**`.timing.csv` の形式は本 PR で確定**: ヘッダ `offset_ms,length_bytes` の 2 列 CSV、`offset_ms` は接続成功時刻からの経過 ms、1 受信チャンクにつき 1 行 |
@@ -456,6 +456,7 @@ go run ./cmd/gateway --mock --listen :8080
 ---
 
 ## 10. 改訂履歴
+- v0.1.5 (2026-05-06): §6.2 を SPA 骨格 #4-A の採用判断で更新。React + TypeScript + Tailwind CSS v3 + 標準 hooks を正式採用し、§9 #2 を解消。
 - v0.1.4 (2026-05-04): §6.1 / §7 / §9 を gateway-recorder PR の確定事項で更新。ロガーを `uber-go/zap` + `lumberjack.v2` に確定(§9 #3 / #4)、`.timing.csv` 形式を `offset_ms,length_bytes` の 2 列に確定(§9 #5)。
 - v0.1.3 (2026-05-04): §4.4 ポータブル運用(USB 配布)を新設。配布物を ZIP に変更、`os.Executable()` ベースのパス解決、I/O fail-soft、FAT32 制約、SmartScreen / Defender 運用、起動時の自動初期化を明文化。`config.json` に `records.dir` を追加。
 - v0.1.2 (2026-05-04): §9 オープン項目を採取先行ロードマップ(#1〜#9)の番号体系で参照するよう更新し、`docs/roadmap.md` への入口を追加。
