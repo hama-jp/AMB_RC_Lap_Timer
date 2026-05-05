@@ -127,6 +127,68 @@ func TestRead_ReadError_ReconnectsTransparently(t *testing.T) {
 	}
 }
 
+// blockingConn simulates "TCP connected but no bytes flowing" — Read blocks
+// until Close is called. Used to exercise ctx cancellation during a stuck
+// conn.Read call (field incident 2026-05-05).
+type blockingConn struct {
+	closed chan struct{}
+	once   sync.Once
+}
+
+func newBlockingConn() *blockingConn {
+	return &blockingConn{closed: make(chan struct{})}
+}
+
+func (c *blockingConn) Read(p []byte) (int, error) {
+	<-c.closed
+	return 0, io.EOF
+}
+func (c *blockingConn) Write(p []byte) (int, error) { return len(p), nil }
+func (c *blockingConn) Close() error {
+	c.once.Do(func() { close(c.closed) })
+	return nil
+}
+func (c *blockingConn) LocalAddr() net.Addr              { return &net.TCPAddr{} }
+func (c *blockingConn) RemoteAddr() net.Addr             { return &net.TCPAddr{} }
+func (c *blockingConn) SetDeadline(time.Time) error      { return nil }
+func (c *blockingConn) SetReadDeadline(time.Time) error  { return nil }
+func (c *blockingConn) SetWriteDeadline(time.Time) error { return nil }
+
+// Regression for the field-2026-05-05 incident: with the upstream connected
+// but silent (no transponders on track), conn.Read blocked forever and ctx
+// cancellation (Ctrl+C) had no effect. Read must close the conn when ctx
+// fires so the syscall unblocks and Read returns ctx.Err().
+func TestRead_ContextCanceled_DuringConnRead_ReturnsCtxErr(t *testing.T) {
+	conn := newBlockingConn()
+	s := newSourceWithFakes(t, func(_ context.Context, _, _ string) (net.Conn, error) {
+		return conn, nil
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	type result struct {
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		_, err := s.Read(ctx)
+		ch <- result{err}
+	}()
+
+	// Let the goroutine enter conn.Read before cancelling.
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+
+	select {
+	case r := <-ch:
+		if !errors.Is(r.err, context.Canceled) {
+			t.Errorf("expected context.Canceled, got %v", r.err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Read did not return after ctx cancellation — conn.Read still blocked")
+	}
+}
+
 func TestRead_ContextCanceled_DuringDial_ReturnsCtxErr(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

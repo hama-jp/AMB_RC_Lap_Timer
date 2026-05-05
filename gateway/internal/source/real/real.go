@@ -57,6 +57,13 @@ func New(addr string, bo *upstream.Backoff, logger *zap.Logger) *Source {
 
 // Read reads the next chunk from upstream, reconnecting transparently
 // on errors. Returns ctx.Err() on cancellation.
+//
+// conn.Read is a blocking syscall that does not natively honor ctx — when
+// the upstream is connected but sending no bytes (e.g. AMB with no
+// transponders on track), it blocks indefinitely. To make Ctrl+C work in
+// that case, a watcher goroutine closes the conn when ctx is cancelled,
+// which causes the in-flight Read to return so we can return ctx.Err().
+// (Field incident 2026-05-05; see docs/incidents/2026-05-05-recorder-csv-flush.md)
 func (s *Source) Read(ctx context.Context) ([]byte, error) {
 	for {
 		if s.conn == nil {
@@ -64,8 +71,22 @@ func (s *Source) Read(ctx context.Context) ([]byte, error) {
 				return nil, err
 			}
 		}
+		readDone := make(chan struct{})
+		go func() {
+			select {
+			case <-ctx.Done():
+				_ = s.conn.Close()
+			case <-readDone:
+			}
+		}()
 		n, err := s.conn.Read(s.buf)
+		close(readDone)
 		if err != nil {
+			if ctx.Err() != nil {
+				_ = s.conn.Close()
+				s.conn = nil
+				return nil, ctx.Err()
+			}
 			s.Logger.Warn("upstream read error, will reconnect",
 				zap.String("addr", s.Addr), zap.Error(err))
 			_ = s.conn.Close()
