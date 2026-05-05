@@ -1,0 +1,154 @@
+{
+  "fixture": "gateway/testdata/captured/session-2026-05-05.bin",
+  "frameCount": 58,
+  "torDistribution": {
+    "0x001C": 1,
+    "0x0002": 42,
+    "0x0001": 15
+  },
+  "passingRecords": [
+    {
+      "passingNumber": 1148387,
+      "transponder": 1,
+      "rtcTimeUs": "1777985972473000",
+      "strength": 167,
+      "hits": 144,
+      "flags": 0,
+      "decoderId": 269591
+    },
+    {
+      "passingNumber": 1148388,
+      "transponder": 1,
+      "rtcTimeUs": "1777985994262000",
+      "strength": 166,
+      "hits": 162,
+      "flags": 0,
+      "decoderId": 269591
+    },
+    {
+      "passingNumber": 1148389,
+      "transponder": 1,
+      "rtcTimeUs": "1777986015947000",
+      "strength": 166,
+      "hits": 119,
+      "flags": 0,
+      "decoderId": 269591
+    },
+    {
+      "passingNumber": 1148390,
+      "transponder": 1,
+      "rtcTimeUs": "1777986037151000",
+      "strength": 162,
+      "hits": 155,
+      "flags": 0,
+      "decoderId": 269591
+    },
+    {
+      "passingNumber": 1148391,
+      "transponder": 1,
+      "rtcTimeUs": "1777986059094000",
+      "strength": 164,
+      "hits": 180,
+      "flags": 0,
+      "decoderId": 269591
+    },
+    {
+      "passingNumber": 1148392,
+      "transponder": 2,
+      "rtcTimeUs": "1777986063662000",
+      "strength": 172,
+      "hits": 253,
+      "flags": 0,
+      "decoderId": 269591
+    },
+    {
+      "passingNumber": 1148393,
+      "transponder": 1,
+      "rtcTimeUs": "1777986080494000",
+      "strength": 163,
+      "hits": 143,
+      "flags": 0,
+      "decoderId": 269591
+    },
+    {
+      "passingNumber": 1148394,
+      "transponder": 2,
+      "rtcTimeUs": "1777986087277000",
+      "strength": 174,
+      "hits": 279,
+      "flags": 0,
+      "decoderId": 269591
+    },
+    {
+      "passingNumber": 1148395,
+      "transponder": 1,
+      "rtcTimeUs": "1777986101339000",
+      "strength": 169,
+      "hits": 167,
+      "flags": 0,
+      "decoderId": 269591
+    },
+    {
+      "passingNumber": 1148396,
+      "transponder": 2,
+      "rtcTimeUs": "1777986110936000",
+      "strength": 172,
+      "hits": 240,
+      "flags": 0,
+      "decoderId": 269591
+    },
+    {
+      "passingNumber": 1148397,
+      "transponder": 1,
+      "rtcTimeUs": "1777986122361000",
+      "strength": 167,
+      "hits": 188,
+      "flags": 0,
+      "decoderId": 269591
+    },
+    {
+      "passingNumber": 1148398,
+      "transponder": 2,
+      "rtcTimeUs": "1777986133735000",
+      "strength": 172,
+      "hits": 287,
+      "flags": 0,
+      "decoderId": 269591
+    },
+    {
+      "passingNumber": 1148399,
+      "transponder": 1,
+      "rtcTimeUs": "1777986143323000",
+      "strength": 166,
+      "hits": 172,
+      "flags": 0,
+      "decoderId": 269591
+    },
+    {
+      "passingNumber": 1148400,
+      "transponder": 2,
+      "rtcTimeUs": "1777986156954000",
+      "strength": 173,
+      "hits": 277,
+      "flags": 0,
+      "decoderId": 269591
+    },
+    {
+      "passingNumber": 1148401,
+      "transponder": 1,
+      "rtcTimeUs": "1777986164690000",
+      "strength": 165,
+      "hits": 155,
+      "flags": 0,
+      "decoderId": 269591
+    }
+  ],
+  "statusRecordCount": 42,
+  "unknownTors": [
+    {
+      "tor": "0x001C",
+      "frameIndex": 0
+    }
+  ],
+  "malformedCount": 0
+}

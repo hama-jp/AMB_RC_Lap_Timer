@@ -45,3 +45,35 @@ jobs:
 
       - name: go build
         run: go build ./cmd/gateway
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: 'web/.nvmrc'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: lint
+        run: npm run lint
+
+      - name: prettier check
+        run: npm run format
+
+      - name: test
+        run: npm run test -- --run
+
+      - name: build
+        run: npm run build
