@@ -2,7 +2,7 @@
 
 実装フェーズの順序と各フェーズの責務を中央集約する。**「実機 LAN 環境での実データ採取を、フロントエンド/パーサ実装より前に行う」** 方針(採取先行)を採用しているため、フェーズ番号は通例の「ゲートウェイ → SPA → パーサ」順ではないことに注意。
 
-> Status: **Draft v0.1.1**(実装フェーズ #1 完了、★ 採取セッション待ち)
+> Status: **Draft v0.1.3**(実装フェーズ #1-#6 + 採取セッション + Field Test 準備(#35/#36)完了、★ Field Test α 自走分実行中)
 
 ---
 
@@ -34,18 +34,26 @@
   ✅ R6  バックログ Issue 起票(#26-#37)
 
 [実装フェーズ]
-  ✅ #1  gateway-recorder MVP                                               (PR #39 merged)
-  ✅ ★   実 LAN 現地データ採取セッション                                      (2026-05-05 / fixture #46 #49 merged)
-  ✅ #2  P3 パーサ TS 実装                                                  ← 本 PR で完了
-  ✅ #3  gateway-full(WS fan-out + go:embed + /healthz + /admin スタブ + --replay)   ← 本 PR で完了
-  ✅ #4  SPA 骨格
-  ✅ #5  ラップ計算と表示
-  ✅ #6  音声読み上げ
-  ⏳ ★   Field Test α(Smoke + Multi-client)
-  ⏳ #7  replay モード
-  ⏳ #8  設定 WebUI
-  ⏳ ★   Field Test β(Sleep/Wake + WiFi drop + Soak 1h)
-  ⏳ #9  リリース自動化(v0.1.0)
+  ✅ #1  gateway-recorder MVP                                               (PR #39)
+  ✅ ★   実 LAN 現地データ採取セッション                                      (2026-05-05 / PR #46 #49)
+  ✅ #2  P3 パーサ TS 実装                                                  (PR #51)
+  ✅ #3  gateway-full(WS fan-out + go:embed + /healthz + --replay)         (PR #53)
+  ✅ #4  SPA 骨格                                                           (PR #60-#64)
+  ✅ #5  ラップ計算と表示                                                    (PR #66)
+  ✅ #6  音声読み上げ + iOS Safari unlock                                    (PR #68)
+
+[Field Test 準備]
+  ✅ #36 docs/field-test-log.md 骨格                                         (PR #69)
+  ✅ #35 tools/fieldtest/{tcp-emitter, ws-recorder, soak-monitor}            (PR #71)
+  ⌛ #70 Windows 自走 smoke/soak harness                                     (PR #72 レビュー済み、マージ待ち)
+  ⏳ #73 ★ Field Test α-1 自走分実行 + docs/field-test-log.md α-1 セッション追記
+  ⏳ ★   Field Test α 人手分(iOS Safari Speech / Sleep-Wake / 物理 USB / SmartScreen / mDNS)現地セッション
+
+[実装フェーズ 続き]
+  ⏳ #7  replay モード(タイミング制御 realtime/fast/instant の正式化)
+  ⏳ #8  設定 WebUI(/admin)
+  ⏳ ★   Field Test β(Sleep/Wake + WiFi drop + Soak 1h、現地)
+  ⏳ #9  リリース自動化(v0.1.0、ZIP 配布)
 
 [継続フェーズ]
   実機検証で派生 Issue を消化、機能拡張(将来)
@@ -114,38 +122,21 @@
 
 ---
 
-### #2 P3 パーサ TS 実装
-**目的**: 採取データを fixture にして、ブラウザ側 P3 パーサを実装する。
-
-**スコープ**:
-- `web/` モジュール初期化(Vite + TS、まだ UI は無くて良い)
-- `web/src/protocol/`: フレーミング層、エスケープ層、ヘッダ層、TLV 層、TOR ディスパッチ
-- Vitest によるテーブル駆動ユニットテスト
-  - 合成フィクスチャ(エッジケース)
-  - **採取フィクスチャ**(`gateway/testdata/captured/`)を `.expected.json` と組で参照
-
-**成果物**:
-- `web/src/protocol/` のパーサ実装一式
-- `.expected.json` スキーマ確定(`docs/test-strategy.md` §2.2 の暫定形を正式化)
-- `ci.yml` に `web` ジョブ追加(typecheck + Vitest)
-
-**先に読むべき docs**: `protocol-p3.md` 全文 / `test-strategy.md` §3.2
+### #2 P3 パーサ TS 実装  ✅(PR #51)
+- `web/src/protocol/` 一式(framing / escape / header / TLV / decoder / records)実装済み
+- 採取フィクスチャ `gateway/testdata/captured/session-2026-05-05.bin` + `.expected.json` で 15 PASSING を fixture 駆動で検証
+- `ci.yml` の `web` ジョブ(typecheck + Vitest + lint + format)稼働中
+- `.expected.json` スキーマは `docs/test-strategy.md` §11.1 として正式化済み
 
 ---
 
-### #3 gateway-full(WS fan-out + go:embed + /healthz + /admin)
-**目的**: ゲートウェイを「ブラウザに配信できる」フル装備にする。
-
-**スコープ**:
-- `internal/hub/`: WebSocket fan-out(複数クライアント、バックプレッシャ方針は別 Issue で確定)
-- `internal/httpsrv/`: ルーティング(`/`, `/assets/*`, `/ws`, `/admin`, `/healthz`, `/logs`)
-- `internal/webassets/`: `go:embed` の口
-- `--replay <file>` モード(`.timing.csv` のタイミングを再生)
-
-**成果物**:
-- 単一 EXE で SPA も配信可能な状態
-- `/healthz` が JSON で `upstream` / `clients` / `uptime_sec` を返す
-- WS バックプレッシャ方針の確定(別 Issue から決定 → 実装)
+### #3 gateway-full(WS fan-out + go:embed + /healthz + --replay)  ✅(PR #53)
+- `internal/hub/` WS fan-out(ring buffer 64、`max_clients` 100、`ErrTooManyClients` → close 1013)
+- `internal/httpsrv/` `/`, `/assets/*`, `/ws`, `/healthz`(`upstream`/`clients`/`uptime_sec`/`version`)
+- `internal/webassets/` `go:embed` で SPA 同梱
+- `--replay <file>` モード(`.timing.csv` のタイミング再生、無ければ instant)
+- WS バックプレッシャ方針 = 古いフレーム破棄 + 警告ログ で確定(#27)
+- `/admin` 設定 WebUI は #8 に分離
 
 ---
 
@@ -174,54 +165,68 @@
 - Web Speech API (`SpeechSynthesis`) 統合
 - iOS Safari のユーザー操作要件への対応(#26)
 
-### ★ Field Test α(Smoke + Multi-client)
-- `docs/test-strategy.md` の Field Test 章を参照(R5 で追加)
-- 30 分の現地確認で重大バグを早期検出
+### Field Test 準備  ✅(PR #69 / #71、PR #72 マージ待ち)
+- ✅ #36 `docs/field-test-log.md` フォーマット骨格(PR #69)
+- ✅ #35 `tools/fieldtest/{tcp-emitter, ws-recorder, soak-monitor.ps1}`(PR #71、独立 Go module)
+- ⌛ #70 `scripts/fieldtest-{smoke,replay-roundtrip,zip-shape,usb-pathshift,soak,runall}.ps1`(PR #72、Smoke / Replay round-trip / ZIP shape / USB pathshift / Soak の 5 シナリオを Windows 単体で自走実行)
+
+### ★ Field Test α  ⏳(自走分: #73 着手前、人手分: 現地セッション待ち)
+- **自走分**(#73): `scripts\fieldtest-runall.ps1` を Windows エージェントが実行 → `docs/field-test-log.md` α-1 セッション追記
+- **人手分**(現地): iOS Safari Speech / Sleep-Wake / 物理 USB / SmartScreen / mDNS — `docs/test-strategy.md` §6.1 参照
+- α 完了基準: 自走分 PASS + 人手分 4/5 以上 PASS
 
 ### #7 replay モード(正式仕様化)
-- `--replay` のタイミング制御(realtime / fast / instant)を仕様確定
-- 採取データを使った回帰テスト基盤
+- `--replay` のタイミング制御(realtime / fast / instant)の `config.json` 反映を完成
+- 採取データを使った回帰テスト基盤(現状は手元のみ、CI への組み込みは別 Issue)
 
 ### #8 設定 WebUI(`/admin`)
 - サーバ側設定(`config.json`)の編集 UI
 - クライアント側設定(`localStorage`)とは厳格に分離(`docs/architecture.md` §3.5)
 
 ### ★ Field Test β(Sleep/Wake + WiFi drop + Soak 1h)
-- 長時間運用に近い検証
+- #8 完了後、現地で実施。`scripts\fieldtest-soak.ps1 -DurationMin 60` をベースに、人手で Sleep/Wake と WiFi drop を投入
 
 ### #9 リリース自動化(v0.1.0)
 - `release.yml` の整備、ZIP 配布(R7 で USB ポータブル前提を反映)
+- `packaging/README.txt`(#37)同梱
 
 ---
 
-## 4. 派生 Issue(R6 で起票済み)
+## 4. 派生 Issue
 
-各フェーズで決定が必要な技術選択は GitHub Issue として起票済み。Issue 番号は対応するフェーズで参照する。
+R6 で起票したバックログ + 各 PR レビューで派生したフォローアップ。**解決済みは打消し線**で残し、何で確定したかを括弧書き。
 
-| 議題 | Issue | 解消フェーズ | 暫定方針 |
-|---|---|---|---|
-| WebSocket ライブラリ(Go) | [#33](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/33) | #3 | `nhooyr.io/websocket` 候補 |
-| ~~ロガー(Go 1.20、`slog` 不可)~~ | ✅ [#34](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/34) | **#1 で確定** | `uber-go/zap` + `lumberjack.v2`(PR #39) |
-| WS バックプレッシャ方針 | [#27](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/27) | #3 | 古いフレーム破棄 + 警告ログ(暫定) |
-| ~~UI フレームワーク~~ | ✅ [#32](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/32) | **#4-A / #55 で確定** | React + TS + Tailwind + 標準 hooks |
-| ~~iOS Safari Speech のユーザー操作要件~~ | ✅ [#26](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/26) / [#67](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/67) | **#6 で対応** | 起動画面で「読み上げを許可」ボタン |
-| 上流接続状態の UI 表現 | [#28](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/28) | #3-#5 | WS テキストフレームで通知 + バナー |
-| WS クライアント再接続 UX | [#29](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/29) | #4 | 指数バックオフ + バナー表示 |
-| クライアント許容数の上限 | [#31](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/31) | #3 | 10 を目安、100 でセーフティ切断 |
-| 時刻同期(`GET_TIME` 利用)の取り扱い | [#30](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/30) | 採取後 | 必要性を採取データで判断 |
-| `tools/fieldtest/*` の実装 | [#35](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/35) | Field Test α 前 | tcp-emitter / ws-recorder / soak-monitor |
-| `docs/field-test-log.md` フォーマット | [#36](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/36) | Field Test α 前 | フォーマット骨格 |
-| `packaging/README.txt` ひな型 | [#37](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/37) | リリース PR 前 | 現地ガイド |
+### 解決済み(クローズ)
 
-PR #39 のレビューで派生した追従 Issue:
+| 議題 | Issue | 確定内容 |
+|---|---|---|
+| ~~ロガー(Go 1.20、`slog` 不可)~~ | ✅ #34 | `uber-go/zap` + `lumberjack.v2`(PR #39) |
+| ~~UI フレームワーク~~ | ✅ #32 | React + TS + Tailwind + 標準 hooks(PR #55-) |
+| ~~iOS Safari Speech のユーザー操作要件~~ | ✅ #26 / #67 | 起動画面の unlock overlay(PR #68) |
+| ~~WebSocket ライブラリ(Go)~~ | ✅ #33 | `nhooyr.io/websocket@v1.8.17`(PR #53) |
+| ~~クライアント許容数の上限~~ | ✅ #31 | `max_clients` 100 / 目安 10、`ErrTooManyClients` → close 1013(PR #53) |
+| ~~WS バックプレッシャ方針~~ | ✅ #27 | drop-oldest ring buffer 64、`client_buffer_len` 設定可(PR #53) |
+| ~~WS クライアント再接続 UX~~ | ✅ #29 | 指数バックオフ + バナー(PR #60-#63) |
+| ~~`docs/field-test-log.md` フォーマット~~ | ✅ #36 | 1 セッション 1 セクション、`✅/⚠/❌`(PR #69) |
+| ~~`tools/fieldtest/*` の実装~~ | ✅ #35 | tcp-emitter / ws-recorder / soak-monitor(PR #71、独立 Go module) |
+
+### 進行中・未解決
+
 | 議題 | Issue | 解消フェーズ | 備考 |
 |---|---|---|---|
-| `real.Source` Close 後 Read の契約違反 | [#40](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/40) | 任意(現状実害なし) | `closed` フラグ導入 |
-| `real.Source.buf` 4096 vs 仕様 10240 の表記揺れ | [#41](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/41) | 任意 | 案 A 推奨(10240 に揃える) |
+| Windows 自走 smoke/soak harness | #70 | Field Test α 前 | PR #72 レビュー済み・マージ待ち |
+| 初回 Field Test α-1 自走分実行 + docs 追記 | #73 | Field Test α | PR #72 マージ後に Windows エージェント着手 |
+| 上流接続状態の UI 表現(WS テキスト frame) | #28 | サーバ側未実装 | クライアント側は `/healthz` polling で代替済み(PR #63) |
+| 時刻同期(`GET_TIME` 利用)の取り扱い | #30 | 採取後再評価 | 採取データから不要そう(別 PR で判断) |
+| `packaging/README.txt` ひな型 | #37 | #9 リリース前 | 未着手 |
+| CRC 再計算(anonymize) | #47 | パーサ CRC 検証導入後 | blocked(現状 broken CRC 許容) |
+| `real.Source` Close 後 Read の契約違反 | #40 | 任意 | 現状実害なし |
+| `real.Source.buf` 4096 vs 仕様 10240 | #41 | 任意 | 案 A 推奨(10240 に揃える) |
 
 ---
 
 ## 5. 改訂履歴
+- v0.1.3 (2026-05-06): §2 全体マップを実装フェーズ #1-#6 + Field Test 準備(#35/#36)完了に更新。§3 #2 / #3 を ✅ + 実装内容に書き換え、Field Test 準備 / α / β / 続フェーズの粒度を分け直す。§4 を「解決済み / 未解決」に分類し直し、PR #51-#72 の実績を反映。
 - v0.1.2 (2026-05-04): §2 全体マップに進行状態(✅ / ⌛ / ⏳)を表示。§4 を「R6 で起票済み」に更新し、派生 Issue 全 12 件 + PR #39 追従 Issue 2 件を表に整理。
 - v0.1.1 (2026-05-04): §3 #1(gateway-recorder MVP)を ✅ 実装完了に更新。§4 ロガーを `uber-go/zap` + `lumberjack.v2` で確定(#34 クローズ)。
 - v0.1 (2026-05-04): 初版。採取先行ロードマップを確定。
