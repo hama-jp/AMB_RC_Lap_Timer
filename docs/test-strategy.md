@@ -2,7 +2,7 @@
 
 本書は実機 AMB デコーダーが手元にない状態でも開発・回帰検証を回せるテスト戦略を定義する。前提となる構成は `docs/architecture.md`、プロトコル仕様は `docs/protocol-p3.md`、CI 構成は `docs/ci-cd.md` を参照。
 
-> Status: **Draft v0.1.3**
+> Status: **Draft v0.1.5**
 
 ---
 
@@ -203,7 +203,7 @@
 
 ### 6.2 シナリオ集
 
-各シナリオは **30 分以内に完了** する粒度を基本(Soak のみ別)。実施日・実施者・観察結果を `docs/field-test-log.md`(将来作成)に追記する。
+各シナリオは **30 分以内に完了** する粒度を基本(Soak のみ別)。実施日・実施者・観察結果を `docs/field-test-log.md`(フォーマットは同ファイル §1–§2 参照)に追記する。
 
 | シナリオ | 想定時間 | 内容 |
 |---|---|---|
@@ -434,7 +434,7 @@ go run .\gateway\cmd\anonymize `
 | 6 | 録画フィクスチャの取り扱い(コミット可否、サイズ閾値) | 採取セッション後 |
 | 7 | E2E 用にヘッドレスブラウザを導入するか(Playwright 等)。当面は不要 | 後日再検討 |
 | 8 | `tools/fieldtest/*` の実装(tcp-emitter / ws-recorder / soak-monitor) | Field Test α 実施前 |
-| 9 | `docs/field-test-log.md` のフォーマット(実施記録) | 初回 Field Test 直前 |
+| 9 | ~~`docs/field-test-log.md` のフォーマット(実施記録)~~ → **確定**: `docs/field-test-log.md` v0.1 を導入。1 セッション = 1 セクション、シナリオごとに `✅/⚠/❌`、派生 Issue 番号を必ず記録、自動収集ログは外部ファイル化(本ファイルからは相対パス参照のみ)。 |
 
 ---
 
@@ -469,6 +469,7 @@ go run .\gateway\cmd\anonymize `
 ---
 
 ## 12. 改訂履歴
+- v0.1.5 (2026-05-06): §11 #9 を解消。`docs/field-test-log.md` v0.1 を導入し、§6 から参照。1 セッション = 1 セクション、シナリオごとに `✅/⚠/❌`、派生 Issue 番号を必ず記録、自動収集ログは別ファイル化する方針。
 - v0.1.4 (2026-05-05): §11 #1 を解消。`gateway/testdata/captured/<session>.expected.json` のスキーマを §11.1 として正式化。BigInt は string 表現。`web` パーサ PR(#2)で session-2026-05-05.expected.json を生成・コミット。
 - v0.1.3 (2026-05-04): §11 #3 / #4 を gateway-recorder PR の確定事項で更新。`.timing.csv` 形式は `offset_ms,length_bytes` 2 列で確定(#3)、`golangci-lint` / `testify` は本 PR 時点では不採用とし、必要時に別 Issue 起票で再検討(#4)。
 - v0.1.2 (2026-05-04): §6.2 シナリオに **USB 起動 / USB 抜き挿し / FAT32 配置** を追加。§6.3 α/β の必須シナリオに USB 起動 / 抜き挿し / FAT32 配置を組み込み。`docs/architecture.md` §4.4(ポータブル運用)と整合。
