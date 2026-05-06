@@ -221,6 +221,35 @@ func TestClose_AfterDial_ClosesUnderlying(t *testing.T) {
 	}
 }
 
+// Regression for Issue #40: under -race, the watcher goroutine's read of
+// s.conn raced the parent's s.conn = nil after a Read error or ctx
+// cancellation. On Linux CI this surfaced as either a data-race report
+// or a nil-pointer dereference inside the goroutine's s.conn.Close().
+//
+// Loop 200 iterations of the cancel-during-blocking-read scenario; with
+// the unfixed code, race detector flags the s.conn data race well within
+// that. With the fix (watcher uses a local conn capture), it's clean.
+func TestRead_NoNilDerefWhenCtxCancelledDuringBlockingRead(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		conn := newBlockingConn()
+		s := newSourceWithFakes(t, func(_ context.Context, _, _ string) (net.Conn, error) {
+			return conn, nil
+		})
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() {
+			_, _ = s.Read(ctx)
+			close(done)
+		}()
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("iter %d: Read did not return within 2s after cancel", i)
+		}
+	}
+}
+
 func TestRead_RealLoopback_Smoke(t *testing.T) {
 	// Sanity: spin up a TCP server on :0 so we exercise the production
 	// Dial/Sleep paths rather than the test fakes.
