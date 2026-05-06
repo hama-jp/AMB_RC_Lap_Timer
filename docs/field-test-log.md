@@ -2,7 +2,7 @@
 
 `docs/test-strategy.md` §6 で定義した Field Test(実 LAN ✕ 実機なし)の **実施記録**を残す場所。CI で自動化しないため、ここに書いておかないと「現地で何が起きたか」が後から辿れなくなる。
 
-> Status: **Draft v0.1.1**(α-1 自走分まで実施)
+> Status: **Draft v0.1.2**(α-1 完了 / β-1 自宅 dry-run 用テンプレート追加)
 
 ---
 
@@ -54,6 +54,50 @@
 - #___ (<概要>)
 ```
 
+### 2.1 β-1 自宅 dry-run 専用テンプレート
+
+`docs/test-strategy.md` §6.3 で定義した「自宅でできる範囲を一気に潰す」セッション用。AMB 実機接続だけ別セッション(β-2)に分離するので、シナリオは固定 9 件に絞ってある。
+
+```markdown
+## YYYY-MM-DD β-1 (Windows ___ / iOS ___ / Android ___ / 自宅 WiFi)
+
+### 環境
+- ゲートウェイ: vX.Y.Z (commit `<short-sha>`、`scripts\build.ps1` 出力)
+- ホスト PC: 持ち込む実機(Windows ___ build ___)
+- クライアント: スマホ ___(Safari ___) / タブレット ___(同) / PC ブラウザ ___
+- ネットワーク: 自宅 WiFi(2.4 / 5 GHz)、ルータ ___
+- 実施者: ___
+
+### 実施シナリオと結果
+| シナリオ | 結果 | メモ |
+|---|---|---|
+| Smoke(`gateway --mock` + 実スマホで PASSING / lap / 音声) | ✅/⚠/❌ | settings.transponder=1、3 ID が流れることを確認 |
+| iOS Safari Speech 初回 unlock + 発話 | | 🔊 タップ → 「21秒xxx」と聞こえるか |
+| Multi-client(スマホ + タブレット同時) | | 両方で同じ表示 / 音声、片方切断で他方継続 |
+| Sleep/Wake(スマホロック → 1〜2 分待機 → 解除) | | WS 自動再接続、表示復元、音声再開 |
+| 実 WiFi drop(機内モード ON/OFF or ルータ電源 OFF/ON) | | ゲートウェイ・クライアント両側で再接続 |
+| Soak 1h(`scripts\fieldtest-soak.ps1 -DurationMin 60`) | | ws_mb_delta / handle_delta / reconnects |
+| `/admin` 手動 E2E(login + 1 項目変更 + logout) | | passphrase 入力、保存トースト、requires_restart バナー |
+| USB 起動(自分の USB に展開・ダブルクリック) | | logs / records が USB 配下に作られる |
+| USB 抜き挿し(起動中に物理的に抜く → 戻す) | | ログ書込みエラー警告のみで停止しない |
+
+### 観察
+- ___(数値・気付き・予想と違ったこと)
+
+### 自動収集ログ
+- `dist\fieldtest-runs\soak-<ts>\` (Soak シナリオで `-LeaveArtifacts` 指定時)
+- 実施者ローカルの動画 / スクリーンショット(コミットしない、個人保管)
+
+### 派生 Issue / PR
+- #___ (<概要>)
+
+### 任意(余裕があれば)
+- mDNS `*.local` 解決(iOS / Android / Win それぞれ)
+- FAT32 USB(NTFS なら不要)
+```
+
+β-1 完了後の **β-2(現地)は AMB 疎通確認のみ**(`docs/test-strategy.md` §6.3 参照)。
+
 ## 3. 実施履歴
 
 > ここから下に実施セッションを **新しいものほど上**(逆時系列)で追記していく。
@@ -97,5 +141,6 @@
 ---
 
 ## 4. 改訂履歴
+- v0.1.2 (2026-05-06): §2.1 に β-1 自宅 dry-run 専用テンプレートを追加。`docs/test-strategy.md` §6.3 の β-1 / β-2 分割に対応。シナリオ 9 件を固定し、AMB 実機なしで完結するセッション用に整える。
 - v0.1.1 (2026-05-06): §3 に α-1 セッション(自走分)を追記。Soak は 10 分短縮版で実施。
 - v0.1 (2026-05-06): 初版。フォーマット骨格とテンプレートのみ。初回 Field Test α 実施前。
