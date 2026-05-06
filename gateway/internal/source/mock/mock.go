@@ -15,11 +15,12 @@ import (
 	"math/rand"
 	"sync"
 	"time"
+
+	"github.com/hama-jp/AMB_RC_Lap_Timer/gateway/internal/p3frame"
 )
 
 const (
-	sor = 0x8E
-	eor = 0x8F
+	mockTransponder = 0x12345678
 )
 
 // Source is an in-memory bytestream emitter.
@@ -94,33 +95,42 @@ func (s *Source) Close() error {
 	}
 }
 
-// frame builds a synthetic ~30-byte record:
-//
-//	0x8E | 9-byte header | TLV-shaped body | 0x8F
-//
-// The header's Frame Length field is filled in so a casual `xxd` glance
-// shows believable structure, but the body is not a real P3 record.
+// frame builds a valid wire-encoded PASSING frame so the SPA parser, lap
+// calculation, and speech path can be smoke-tested without a real decoder.
 func (s *Source) frame() []byte {
-	body := make([]byte, 16)
-	binary.LittleEndian.PutUint32(body[0:4], 0x12345678) // pretend transponder
-	binary.LittleEndian.PutUint64(body[4:12], uint64(s.counter)*1500*1000)
-	body[12] = byte(s.Rand.Intn(64) + 32) // pretend strength
-	body[13] = byte(s.Rand.Intn(8))       // pretend hits
-	body[14] = 0x00
-	body[15] = 0x00
+	body := make([]byte, 0, 34)
+	body = appendTLV32(body, p3frame.PassingPassingNumber, s.counter+1)
+	body = appendTLV32(body, p3frame.PassingTransponder, mockTransponder)
+	body = appendTLV64(body, p3frame.PassingRTCTime, uint64(s.counter)*1500*1000)
+	body = appendTLV16(body, p3frame.PassingStrength, uint16(s.Rand.Intn(64)+32))
+	body = appendTLV16(body, p3frame.PassingHits, uint16(s.Rand.Intn(8)))
+	body = appendTLV16(body, p3frame.PassingFlags, 0)
 	s.counter++
 
-	header := make([]byte, 9)
-	// Pretend "Frame Length" in bytes 0..1 little-endian (SOR + header + body + EOR).
-	binary.LittleEndian.PutUint16(header[0:2], uint16(1+len(header)+len(body)+1))
-	// header[2..8] left as zero placeholders.
+	totalLen := p3frame.HeaderSize + len(body) + 1
+	unescaped := make([]byte, totalLen)
+	unescaped[0] = p3frame.SOR
+	unescaped[1] = 0x02
+	binary.LittleEndian.PutUint16(unescaped[2:4], uint16(totalLen))
+	binary.LittleEndian.PutUint16(unescaped[8:10], p3frame.TORPassing)
+	copy(unescaped[p3frame.HeaderSize:], body)
+	unescaped[len(unescaped)-1] = p3frame.EOR
+	return p3frame.Escape(unescaped)
+}
 
-	out := make([]byte, 0, 1+len(header)+len(body)+1)
-	out = append(out, sor)
-	out = append(out, header...)
-	out = append(out, body...)
-	out = append(out, eor)
-	return out
+func appendTLV16(body []byte, id byte, value uint16) []byte {
+	body = append(body, id, 2)
+	return binary.LittleEndian.AppendUint16(body, value)
+}
+
+func appendTLV32(body []byte, id byte, value uint32) []byte {
+	body = append(body, id, 4)
+	return binary.LittleEndian.AppendUint32(body, value)
+}
+
+func appendTLV64(body []byte, id byte, value uint64) []byte {
+	body = append(body, id, 8)
+	return binary.LittleEndian.AppendUint64(body, value)
 }
 
 func ctxSleep(ctx context.Context, d time.Duration) error {
