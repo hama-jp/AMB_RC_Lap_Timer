@@ -55,6 +55,7 @@ type cliFlags struct {
 	upstream    string
 	recordPath  string
 	replayPath  string
+	replaySpeed string
 	mockMode    bool
 	listen      string
 	showVersion bool
@@ -66,6 +67,7 @@ func main() {
 	flag.StringVar(&fl.upstream, "upstream", "", "override upstream host:port (e.g. 192.168.1.21:5403)")
 	flag.StringVar(&fl.recordPath, "record", "", "record received bytes to <file> (and <file>.timing.csv)")
 	flag.StringVar(&fl.replayPath, "replay", "", "play back a captured .bin (+ .timing.csv) instead of live upstream")
+	flag.StringVar(&fl.replaySpeed, "replay-speed", "", "override config.replay.speed (realtime | fast | instant); only meaningful with --replay")
 	flag.BoolVar(&fl.mockMode, "mock", false, "use built-in mock source (no upstream / no replay)")
 	flag.StringVar(&fl.listen, "listen", "", "override config.listen (e.g. :8080)")
 	flag.BoolVar(&fl.showVersion, "version", false, "print version and exit")
@@ -117,6 +119,10 @@ func run(fl cliFlags) error {
 	if fl.listen != "" {
 		cfg.Listen = fl.listen
 	}
+	// CLI > config.json > defaults. Empty means "no CLI override".
+	if fl.replaySpeed != "" {
+		cfg.Replay.Speed = fl.replaySpeed
+	}
 
 	if err := os.MkdirAll(cfg.Logging.Dir, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "mkdir logs warning: %v\n", err)
@@ -136,6 +142,15 @@ func run(fl cliFlags) error {
 	defer log.Close()
 
 	upstreamAddr := net.JoinHostPort(cfg.Upstream.Host, strconv.Itoa(cfg.Upstream.Port))
+
+	// --replay-speed is only consulted by the replay source. If the operator
+	// passed it together with --mock / --record / live upstream, the value
+	// will sit in config but never be read; warn so the misuse is visible.
+	if fl.replaySpeed != "" && fl.replayPath == "" {
+		log.Warn("--replay-speed ignored: only meaningful with --replay",
+			zap.String("speed", fl.replaySpeed))
+	}
+
 	log.Info("gateway starting",
 		zap.String("version", version),
 		zap.String("baseDir", baseDir),
@@ -245,6 +260,12 @@ func run(fl cliFlags) error {
 //	source). --record is also exclusive with both, per the Issue #3
 //	completion criteria — recording while mocking/replaying re-records
 //	the same data and is more confusing than useful.
+//
+//	--replay-speed must be one of "" / realtime / fast / instant; an empty
+//	string defers to config.replay.speed. The flag is only meaningful with
+//	--replay; we don't reject the combination with --mock / --record (that
+//	would be over-strict for orchestration scripts), but openSource logs a
+//	warning if it's set without --replay.
 func validateSourceFlags(fl cliFlags) error {
 	exclusive := []string{}
 	if fl.mockMode {
@@ -258,6 +279,11 @@ func validateSourceFlags(fl cliFlags) error {
 	}
 	if len(exclusive) > 1 {
 		return fmt.Errorf("flags %v are mutually exclusive — pick exactly one", exclusive)
+	}
+	switch fl.replaySpeed {
+	case "", "realtime", "fast", "instant":
+	default:
+		return fmt.Errorf("--replay-speed: %q is not one of realtime / fast / instant", fl.replaySpeed)
 	}
 	return nil
 }

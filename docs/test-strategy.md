@@ -163,12 +163,12 @@
 | `record`    | 受信した生バイト列をファイル保存 | フィクスチャ採取 |
 
 ### 5.1 Replay の速度制御
-`config.json` の `replay.speed`:
+`config.json` の `replay.speed`(または CLI `--replay-speed` で上書き):
 
 | 値          | 意味 |
 |-------------|------|
 | `realtime`  | 録画時のタイムスタンプ間隔を再現(原則これ) |
-| `fast`      | 一定倍率(例 10x。既定値は実装側で固定) |
+| `fast`      | 現実装では `realtime × 10`(`offset_ms / 10` を honor。`gateway/internal/source/replay/replay.go` の `fastSpeedupFactor` 定数で固定。可変倍率が必要になったら別 Issue) |
 | `instant`   | 待たずに全フレームを連続送出(テスト高速化用) |
 
 → 速度制御のためにフィクスチャはタイムスタンプを保持する必要がある。**`.bin` は生バイト列のみ**とし、タイムスタンプは **同名 `.timing.csv`**(`offset_ms,length_bytes`)に分離する案を初期採用(後続 PR で確定)。

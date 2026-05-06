@@ -121,11 +121,13 @@ func TestRead_RealtimeMode_HonorsTimingOffsets(t *testing.T) {
 	}
 }
 
-func TestRead_FastMode_DoesNotSleep(t *testing.T) {
+func TestRead_FastMode_CompressesOffsetsByTenX(t *testing.T) {
 	dir := t.TempDir()
+	// offsets 0 / 1000 / 10000 ms in realtime should become 0 / 100 / 1000
+	// ms under fast (fastSpeedupFactor = 10).
 	bin := writeFixture(t, dir, "fast", [][]byte{
-		[]byte("aa"), []byte("bb"),
-	}, []int64{0, 1000})
+		[]byte("aa"), []byte("bb"), []byte("cc"),
+	}, []int64{0, 1000, 10000})
 
 	src, err := New(bin, "fast", zap.NewNop())
 	if err != nil {
@@ -133,8 +135,49 @@ func TestRead_FastMode_DoesNotSleep(t *testing.T) {
 	}
 	defer src.Close()
 
+	now := time.Unix(1_700_000_000, 0)
+	src.now = func() time.Time { return now }
+	var slept []time.Duration
 	src.sleep = func(_ context.Context, d time.Duration) error {
-		t.Fatalf("fast mode should not sleep, got %v", d)
+		slept = append(slept, d)
+		now = now.Add(d)
+		return nil
+	}
+
+	for i := 0; i < 3; i++ {
+		if _, err := src.Read(context.Background()); err != nil {
+			t.Fatalf("read %d: %v", i, err)
+		}
+	}
+
+	// First call: target = 0/10 ms after started, so no positive delta → no sleep.
+	// Second call: target = 1000/10 = 100 ms; 100 ms - 0 elapsed = 100 ms.
+	// Third call:  target = 10000/10 = 1000 ms; 1000 - 100 already elapsed = 900 ms.
+	want := []time.Duration{100 * time.Millisecond, 900 * time.Millisecond}
+	if len(slept) != len(want) {
+		t.Fatalf("sleep count: got %d want %d (%v)", len(slept), len(want), slept)
+	}
+	for i, w := range want {
+		if slept[i] != w {
+			t.Errorf("sleep %d: got %v want %v", i, slept[i], w)
+		}
+	}
+}
+
+func TestRead_InstantMode_DoesNotSleep(t *testing.T) {
+	dir := t.TempDir()
+	bin := writeFixture(t, dir, "instant", [][]byte{
+		[]byte("aa"), []byte("bb"),
+	}, []int64{0, 60_000})
+
+	src, err := New(bin, "instant", zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+
+	src.sleep = func(_ context.Context, d time.Duration) error {
+		t.Fatalf("instant mode should not sleep, got %v", d)
 		return nil
 	}
 
