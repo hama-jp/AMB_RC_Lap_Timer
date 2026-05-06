@@ -4,9 +4,15 @@ import { loadSettings } from '../settings/settingsStore';
 
 export const PASSING_BUFFER_LIMIT = 50;
 
+export interface PassingEntry {
+  readonly record: PassingRecord;
+  /** Difference from the previous matching PASSING RTC_TIME in microseconds. */
+  readonly lapTimeUs: bigint | null;
+}
+
 export interface PassingsSnapshot {
   readonly targetTransponder: number | null;
-  readonly passings: readonly PassingRecord[];
+  readonly passings: readonly PassingEntry[];
 }
 
 export interface PassingsStore {
@@ -39,7 +45,8 @@ class PassingsStoreImpl implements PassingsStore {
   private readonly loadTargetTransponder: () => number | null;
   private readonly limit: number;
   private targetTransponder: number | null;
-  private passings: PassingRecord[] = [];
+  private passings: PassingEntry[] = [];
+  private previousPassing: PassingRecord | null = null;
   private stopWsMessage: (() => void) | null = null;
   private stopWsState: (() => void) | null = null;
 
@@ -80,6 +87,7 @@ class PassingsStoreImpl implements PassingsStore {
   reset(): void {
     this.decoder.reset();
     this.passings = [];
+    this.previousPassing = null;
     this.emit();
   }
 
@@ -113,7 +121,15 @@ class PassingsStoreImpl implements PassingsStore {
       if (result.kind !== 'passing' || result.record.transponder !== this.targetTransponder) {
         continue;
       }
-      this.passings = [result.record, ...this.passings].slice(0, this.limit);
+      const entry: PassingEntry = {
+        record: result.record,
+        lapTimeUs:
+          this.previousPassing === null
+            ? null
+            : result.record.rtcTimeUs - this.previousPassing.rtcTimeUs,
+      };
+      this.previousPassing = result.record;
+      this.passings = [entry, ...this.passings].slice(0, this.limit);
       changed = true;
     }
 

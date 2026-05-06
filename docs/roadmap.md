@@ -39,7 +39,7 @@
   ✅ #2  P3 パーサ TS 実装                                                  ← 本 PR で完了
   ✅ #3  gateway-full(WS fan-out + go:embed + /healthz + /admin スタブ + --replay)   ← 本 PR で完了
   ✅ #4  SPA 骨格
-  ⏳ #5  ラップ計算と表示
+  ✅ #5  ラップ計算と表示
   ⏳ #6  音声読み上げ
   ⏳ ★   Field Test α(Smoke + Multi-client)
   ⏳ #7  replay モード
@@ -163,6 +163,8 @@
 ---
 
 ### #5 ラップ計算と表示
+**状態**: ✅ 完了(#65)。対象トランスポンダーの連続 PASSING `RTC_TIME` 差分から Lap 秒を算出し、LapList にミリ秒精度で表示する。
+
 - パーサ → PASSING 抽出 → 同一ポンダーの `RTC_TIME` 差分でラップ算出
 - ポンダー別ラップ履歴の表示
 

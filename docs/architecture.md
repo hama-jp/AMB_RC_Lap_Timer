@@ -2,7 +2,7 @@
 
 本書はリポジトリ構成、配信トポロジ、ビルドフロー、ローカル開発手順を定義する。実装着手前の合意ドキュメントであり、以降の実装 PR は本書に従う。前提となる設計判断は `docs/gateway-technical-decision.md`、プロトコル仕様は `docs/protocol-p3.md` を参照。
 
-> Status: **Draft v0.1.6**
+> Status: **Draft v0.1.7**
 
 ---
 
@@ -456,6 +456,7 @@ go run ./cmd/gateway --mock --listen :8080
 ---
 
 ## 10. 改訂履歴
+- v0.1.7 (2026-05-06): ラップ計算 #5 / #65 の完了に合わせ、SPA の PASSING 表示に連続 PASSING の `RTC_TIME` 差分から算出する Lap 秒列を追加。
 - v0.1.6 (2026-05-06): SPA 骨格 #4-E / #59 の完了に合わせ、Web 側で WS 受信、クライアント設定、状態バナー、PASSING フィルタリスト、`/healthz` version 表示まで結合済みとする。
 - v0.1.5 (2026-05-06): §6.2 を SPA 骨格 #4-A の採用判断で更新。React + TypeScript + Tailwind CSS v3 + 標準 hooks を正式採用し、§9 #2 を解消。
 - v0.1.4 (2026-05-04): §6.1 / §7 / §9 を gateway-recorder PR の確定事項で更新。ロガーを `uber-go/zap` + `lumberjack.v2` に確定(§9 #3 / #4)、`.timing.csv` 形式を `offset_ms,length_bytes` の 2 列に確定(§9 #5)。

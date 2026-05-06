@@ -1,8 +1,9 @@
 import '@testing-library/jest-dom/vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import type { WsClient, WsMessageHandler, WsStateHandler } from '../../transport/wsClient';
+import { buildPassingFrame } from '../../../tests/protocol/synthetic';
 import { SETTINGS_STORAGE_KEYS } from '../settings/settingsStore';
 import { LapList } from './LapList';
 
@@ -27,6 +28,20 @@ class FakeWsClient implements WsClient {
       this.stateHandlers.delete(handler);
     };
   }
+
+  emitPassing(rtcTimeUs: bigint, passingNumber: number): void {
+    const frame = buildPassingFrame({
+      passingNumber,
+      transponder: 1,
+      rtcTimeUs,
+      strength: 120,
+      hits: 7,
+      flags: 0,
+    });
+    for (const handler of [...this.messageHandlers]) {
+      handler(toArrayBuffer(frame));
+    }
+  }
 }
 
 describe('LapList', () => {
@@ -49,4 +64,25 @@ describe('LapList', () => {
 
     expect(screen.getByText('トランスポンダー 1 の PASSING を待機中です。')).toBeInTheDocument();
   });
+
+  it('shows dash for the first lap and milliseconds for subsequent laps', () => {
+    window.localStorage.setItem(SETTINGS_STORAGE_KEYS.transponder, '1');
+    const wsClient = new FakeWsClient();
+    render(<LapList wsClient={wsClient} />);
+
+    act(() => {
+      wsClient.emitPassing(10_000_000n, 1);
+      wsClient.emitPassing(31_789_000n, 2);
+    });
+
+    expect(screen.getByText('Lap')).toBeInTheDocument();
+    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.getByText('21.789')).toBeInTheDocument();
+  });
 });
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}

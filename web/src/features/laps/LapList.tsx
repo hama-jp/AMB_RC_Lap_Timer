@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import type { WsClient } from '../../transport/wsClient';
+import { formatLapTime } from './formatLapTime';
 import { createPassingsStore, type PassingsSnapshot } from './passingsStore';
 
 export interface LapListProps {
@@ -58,15 +59,17 @@ export function LapList({ wsClient }: LapListProps): JSX.Element {
           <thead className="bg-slate-950/60 text-xs uppercase tracking-wide text-slate-400">
             <tr>
               <th className="px-4 py-3">Passing #</th>
+              <th className="px-4 py-3">Lap</th>
               <th className="px-4 py-3">RTC Time</th>
               <th className="px-4 py-3">Strength</th>
               <th className="px-4 py-3">Hits</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800 text-slate-200">
-            {snapshot.passings.map((record) => (
+            {snapshot.passings.map(({ record, lapTimeUs }) => (
               <tr key={`${record.passingNumber}-${record.rtcTimeUs.toString()}`}>
                 <td className="px-4 py-3 font-mono text-slate-50">{record.passingNumber}</td>
+                <td className="px-4 py-3 font-mono text-cyan-100">{formatLapTime(lapTimeUs)}</td>
                 <td className="px-4 py-3 font-mono">{formatRtcTime(record.rtcTimeUs)}</td>
                 <td className="px-4 py-3 font-mono">{record.strength}</td>
                 <td className="px-4 py-3 font-mono">{record.hits}</td>
