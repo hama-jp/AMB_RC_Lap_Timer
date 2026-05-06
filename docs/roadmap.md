@@ -40,7 +40,7 @@
   ✅ #3  gateway-full(WS fan-out + go:embed + /healthz + /admin スタブ + --replay)   ← 本 PR で完了
   ✅ #4  SPA 骨格
   ✅ #5  ラップ計算と表示
-  ⏳ #6  音声読み上げ
+  ✅ #6  音声読み上げ
   ⏳ ★   Field Test α(Smoke + Multi-client)
   ⏳ #7  replay モード
   ⏳ #8  設定 WebUI
@@ -169,8 +169,10 @@
 - ポンダー別ラップ履歴の表示
 
 ### #6 音声読み上げ
+**状態**: ✅ 完了(#67)。`PassingEntry.lapTimeUs` を Web Speech API (`SpeechSynthesis`) で発話し、iOS Safari のユーザー操作要件(#26)も unlock overlay で対応する。
+
 - Web Speech API (`SpeechSynthesis`) 統合
-- iOS Safari のユーザー操作要件への対応(別 Issue)
+- iOS Safari のユーザー操作要件への対応(#26)
 
 ### ★ Field Test α(Smoke + Multi-client)
 - `docs/test-strategy.md` の Field Test 章を参照(R5 で追加)
@@ -202,7 +204,7 @@
 | ~~ロガー(Go 1.20、`slog` 不可)~~ | ✅ [#34](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/34) | **#1 で確定** | `uber-go/zap` + `lumberjack.v2`(PR #39) |
 | WS バックプレッシャ方針 | [#27](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/27) | #3 | 古いフレーム破棄 + 警告ログ(暫定) |
 | ~~UI フレームワーク~~ | ✅ [#32](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/32) | **#4-A / #55 で確定** | React + TS + Tailwind + 標準 hooks |
-| iOS Safari Speech のユーザー操作要件 | [#26](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/26) | #6 | 起動画面で「読み上げを許可」ボタン |
+| ~~iOS Safari Speech のユーザー操作要件~~ | ✅ [#26](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/26) / [#67](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/67) | **#6 で対応** | 起動画面で「読み上げを許可」ボタン |
 | 上流接続状態の UI 表現 | [#28](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/28) | #3-#5 | WS テキストフレームで通知 + バナー |
 | WS クライアント再接続 UX | [#29](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/29) | #4 | 指数バックオフ + バナー表示 |
 | クライアント許容数の上限 | [#31](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/31) | #3 | 10 を目安、100 でセーフティ切断 |

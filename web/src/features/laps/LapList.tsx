@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { WsClient } from '../../transport/wsClient';
 import { formatLapTime } from './formatLapTime';
-import { createPassingsStore, type PassingsSnapshot } from './passingsStore';
+import type { PassingsSnapshot, PassingsStore } from './passingsStore';
 
 export interface LapListProps {
   readonly wsClient: WsClient;
+  readonly store: PassingsStore;
 }
 
 const INITIAL_SNAPSHOT: PassingsSnapshot = {
@@ -13,17 +14,14 @@ const INITIAL_SNAPSHOT: PassingsSnapshot = {
   passings: [],
 };
 
-export function LapList({ wsClient }: LapListProps): JSX.Element {
-  const store = useMemo(() => createPassingsStore({ wsClient }), [wsClient]);
+export function LapList({ store }: LapListProps): JSX.Element {
   const [snapshot, setSnapshot] = useState<PassingsSnapshot>(() => store.getSnapshot());
 
   useEffect(() => {
     const unsubscribe = store.subscribe(setSnapshot);
-    const stop = store.start();
     setSnapshot(store.getSnapshot());
     return () => {
       unsubscribe();
-      stop();
     };
   }, [store]);
 

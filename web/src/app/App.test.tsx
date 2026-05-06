@@ -1,8 +1,9 @@
 import '@testing-library/jest-dom/vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SETTINGS_STORAGE_KEYS } from '../features/settings/settingsStore';
+import type { SpeechController } from '../features/speech/speechController';
 import type { WsClient, WsMessage, WsMessageHandler, WsStateHandler } from '../transport/wsClient';
 import { buildPassingFrame } from '../../tests/protocol/synthetic';
 import { App } from './App';
@@ -37,6 +38,20 @@ class FakeWsClient implements WsClient {
       handler(message);
     }
   }
+}
+
+function createSpeechController(): SpeechController & { readonly speak: ReturnType<typeof vi.fn> } {
+  let unlocked = false;
+  const speak = vi.fn();
+  return {
+    isSupported: () => true,
+    speak,
+    cancel: vi.fn(),
+    unlock: vi.fn(() => {
+      unlocked = true;
+    }),
+    isUnlocked: () => unlocked,
+  };
 }
 
 describe('App integration', () => {
@@ -83,6 +98,46 @@ describe('App integration', () => {
     expect(screen.getByText('88')).toBeInTheDocument();
     expect(screen.getByText('9')).toBeInTheDocument();
     expect(screen.getByText('test-version')).toBeInTheDocument();
+  });
+
+  it('speaks lap time after speech unlock', async () => {
+    window.localStorage.setItem(SETTINGS_STORAGE_KEYS.transponder, '1');
+    window.localStorage.setItem(SETTINGS_STORAGE_KEYS.speechEnabled, 'true');
+    const wsClient = new FakeWsClient();
+    const speechController = createSpeechController();
+    render(<App speechController={speechController} wsClient={wsClient} />);
+
+    await screen.findByText('gateway version:');
+    fireEvent.click(screen.getByRole('button', { name: '🔊 読み上げを有効化' }));
+
+    act(() => {
+      wsClient.emitMessage(
+        toArrayBuffer(
+          buildPassingFrame({
+            passingNumber: 1,
+            transponder: 1,
+            rtcTimeUs: 10_000_000n,
+            strength: 88,
+            hits: 9,
+            flags: 0,
+          }),
+        ),
+      );
+      wsClient.emitMessage(
+        toArrayBuffer(
+          buildPassingFrame({
+            passingNumber: 2,
+            transponder: 1,
+            rtcTimeUs: 31_789_000n,
+            strength: 88,
+            hits: 9,
+            flags: 0,
+          }),
+        ),
+      );
+    });
+
+    expect(speechController.speak).toHaveBeenCalledWith('21.789秒');
   });
 });
 
