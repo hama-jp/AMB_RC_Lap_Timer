@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { LapList } from '../features/laps/LapList';
+import type { PassingsStore } from '../features/laps/passingsStore';
 import { SettingsPage } from '../features/settings/SettingsPage';
 import type { WsClient } from '../transport/wsClient';
 
@@ -17,9 +18,10 @@ function getCurrentRoute(): AppRoute {
 
 export interface AppRouterProps {
   readonly wsClient: WsClient;
+  readonly store: PassingsStore;
 }
 
-export function AppRouter({ wsClient }: AppRouterProps): JSX.Element {
+export function AppRouter({ store, wsClient }: AppRouterProps): JSX.Element {
   const [route, setRoute] = useState<AppRoute>(() => getCurrentRoute());
 
   useEffect(() => {
@@ -38,5 +40,5 @@ export function AppRouter({ wsClient }: AppRouterProps): JSX.Element {
     return <SettingsPage />;
   }
 
-  return <LapList wsClient={wsClient} />;
+  return <LapList store={store} wsClient={wsClient} />;
 }

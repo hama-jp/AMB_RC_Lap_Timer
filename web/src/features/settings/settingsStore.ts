@@ -3,6 +3,8 @@ export const SETTINGS_STORAGE_KEYS = {
   speechEnabled: 'amb-rc:setting:speech.enabled',
 } as const;
 
+export const SETTINGS_CHANGED_EVENT = 'amb-rc:settings-changed';
+
 export type AppSettings = {
   readonly transponder: number | null;
   readonly speechEnabled: boolean;
@@ -70,6 +72,10 @@ export function saveSettings(
     settings.transponder === null ? '' : settings.transponder.toString(10),
   );
   storage.setItem(SETTINGS_STORAGE_KEYS.speechEnabled, String(settings.speechEnabled));
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(SETTINGS_CHANGED_EVENT));
+  }
 }
 
 export function clearSettings(storage: SettingsStorage = window.localStorage): void {

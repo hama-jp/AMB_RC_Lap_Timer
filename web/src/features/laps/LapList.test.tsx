@@ -6,6 +6,7 @@ import type { WsClient, WsMessageHandler, WsStateHandler } from '../../transport
 import { buildPassingFrame } from '../../../tests/protocol/synthetic';
 import { SETTINGS_STORAGE_KEYS } from '../settings/settingsStore';
 import { LapList } from './LapList';
+import { createPassingsStore } from './passingsStore';
 
 class FakeWsClient implements WsClient {
   readonly messageHandlers = new Set<WsMessageHandler>();
@@ -50,7 +51,10 @@ describe('LapList', () => {
   });
 
   it('asks for a transponder when unset', () => {
-    render(<LapList wsClient={new FakeWsClient()} />);
+    const wsClient = new FakeWsClient();
+    const store = createPassingsStore({ wsClient });
+
+    render(<LapList store={store} wsClient={wsClient} />);
 
     expect(
       screen.getByText('設定画面で対象トランスポンダーを入力してください。'),
@@ -59,8 +63,10 @@ describe('LapList', () => {
 
   it('shows an empty waiting state when transponder is set', () => {
     window.localStorage.setItem(SETTINGS_STORAGE_KEYS.transponder, '1');
+    const wsClient = new FakeWsClient();
+    const store = createPassingsStore({ wsClient });
 
-    render(<LapList wsClient={new FakeWsClient()} />);
+    render(<LapList store={store} wsClient={wsClient} />);
 
     expect(screen.getByText('トランスポンダー 1 の PASSING を待機中です。')).toBeInTheDocument();
   });
@@ -68,7 +74,9 @@ describe('LapList', () => {
   it('shows dash for the first lap and milliseconds for subsequent laps', () => {
     window.localStorage.setItem(SETTINGS_STORAGE_KEYS.transponder, '1');
     const wsClient = new FakeWsClient();
-    render(<LapList wsClient={wsClient} />);
+    const store = createPassingsStore({ wsClient });
+    store.start();
+    render(<LapList store={store} wsClient={wsClient} />);
 
     act(() => {
       wsClient.emitPassing(10_000_000n, 1);
