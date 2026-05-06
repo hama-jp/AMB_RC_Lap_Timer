@@ -6,10 +6,10 @@
 //
 //   - "realtime"  Honor the offset_ms column; sleep between chunks to
 //     reproduce the original cadence. (Default.)
-//   - "fast"      Honor the order and chunk sizes but emit them
-//     back-to-back with no inter-chunk delay.
-//   - "instant"   Same as "fast" for now; reserved for future use
-//     (e.g., emit the whole file in one chunk).
+//   - "fast"      Honor offset_ms, but compressed by fastSpeedupFactor
+//     (currently 10×). A 60-second recording finishes in 6 seconds.
+//   - "instant"   Skip all sleeps; emit chunks back-to-back as fast as
+//     the goroutine schedules them.
 //
 // If `<bin>.timing.csv` does not exist, the source falls back to "instant"
 // and emits one chunk = the entire file. This covers fixtures whose timing
@@ -38,6 +38,13 @@ const (
 	SpeedFast     SpeedMode = "fast"
 	SpeedInstant  SpeedMode = "instant"
 )
+
+// fastSpeedupFactor is the divisor applied to offset_ms when speed=fast.
+// 10× is enough for "I want this finished quickly while still preserving
+// inter-chunk ordering." A separate per-config multiplier would only buy
+// flexibility we don't need yet — go to "instant" if 10× is still too slow
+// (Issue #76 scope decision).
+const fastSpeedupFactor = 10
 
 // SleepFunc is a context-aware sleep, injectable for tests.
 type SleepFunc func(ctx context.Context, d time.Duration) error
@@ -123,15 +130,21 @@ func (s *Source) Read(ctx context.Context) ([]byte, error) {
 		s.started = s.now()
 	}
 
-	if s.speed == SpeedRealtime {
-		target := s.started.Add(time.Duration(row.offsetMs) * time.Millisecond)
+	switch s.speed {
+	case SpeedRealtime, SpeedFast:
+		offset := time.Duration(row.offsetMs) * time.Millisecond
+		if s.speed == SpeedFast {
+			offset /= fastSpeedupFactor
+		}
+		target := s.started.Add(offset)
 		if d := target.Sub(s.now()); d > 0 {
 			if err := s.sleep(ctx, d); err != nil {
 				return nil, err
 			}
 		}
+	case SpeedInstant:
+		// Skip all sleeps; chunks fly back-to-back.
 	}
-	// "fast" / "instant" emit immediately.
 
 	buf := make([]byte, row.length)
 	n, err := io.ReadFull(s.bin, buf)

@@ -115,14 +115,15 @@
 ### 3.3 起動オプション
 
 ```
-gateway.exe [--config <path>] [--mock | --replay <file> | --record <file>] [--listen <addr>]
+gateway.exe [--config <path>] [--mock | --replay <file> | --record <file>] [--replay-speed <mode>] [--listen <addr>]
 ```
 
 | オプション | 既定値           | 説明 |
 |------------|------------------|------|
 | `--config` | `./config.json`  | 設定ファイル |
 | `--mock`   | (off)            | 受信ソースを内蔵 Mock TCP サーバ相当に切替 |
-| `--replay` | (なし)           | `.bin` の録画ファイルを再生(等速/早送り/即時は config 側) |
+| `--replay` | (なし)           | `.bin` の録画ファイルを再生(等速/早送り/即時は config / `--replay-speed` 側) |
+| `--replay-speed` | (空 = config を使用) | `realtime` / `fast`(realtime × 10) / `instant` のいずれか。`config.json:replay.speed` を上書きする。`--replay` 以外と組合せた場合は警告ログのみで無視 |
 | `--record` | (なし)           | 受信した生バイト列をファイルへ記録(デバッグ/再生フィクスチャ用) |
 | `--listen` | `:8080`          | HTTP/WS の bind |
 
@@ -146,7 +147,7 @@ gateway.exe [--config <path>] [--mock | --replay <file> | --record <file>] [--li
     "max_backups": 5
   },
   "replay": {
-    "speed": "realtime"   // "realtime" | "fast" | "instant"
+    "speed": "realtime"   // "realtime" | "fast" (= realtime × 10) | "instant"; CLI --replay-speed が上書き可
   },
   "records": {
     "dir": "./records"
