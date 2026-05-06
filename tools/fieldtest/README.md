@@ -67,6 +67,7 @@ Flags:
 | `--out`                  | `recorder.csv`           | Output path. Truncated on start. |
 | `--format`               | `csv`                    | `csv` or `jsonl`. |
 | `--duration-sec`         | `0`                      | Exit after N s. `0` = run until SIGINT. |
+| `--raw-out`              | (none)                   | If set, every received WS payload is appended byte-for-byte. Used by `scripts/fieldtest-replay-roundtrip.ps1` to compare against the input `.bin`. |
 | `--reconnect-initial-ms` | `500`                    | Initial reconnect backoff. |
 | `--reconnect-max-ms`     | `30000`                  | Cap on reconnect backoff. |
 | `--quiet`                | `false`                  | Suppress per-frame stderr logging (rows are still written). |
@@ -77,7 +78,8 @@ CSV columns: `timestamp, event, frame_index, bytes, ms_since_prev, note`.
 
 - `connect` — successful WebSocket handshake; `note` is the URL.
 - `frame` — binary message received; `bytes` is the payload size.
-- `disconnect` — connection dropped; `note` is the underlying error.
+- `disconnect` — connection dropped while ctx was still alive; `note` is the underlying error.
+- `shutdown` — written exactly once when ctx is cancelled (signal or `--duration-sec` elapsed); `note` is `"signal"` or `"duration elapsed"`. Harness disconnect counters should ignore this event so a clean exit does not look like a drop (Issue #70 review).
 
 Backoff resets to the initial value once a connection that received at
 least one frame disconnects, so a single connection that drops after a
