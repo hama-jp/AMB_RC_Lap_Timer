@@ -12,6 +12,7 @@ export interface LapListProps {
 const INITIAL_SNAPSHOT: PassingsSnapshot = {
   targetTransponder: null,
   passings: [],
+  bestLapUs: null,
 };
 
 export function LapList({ store }: LapListProps): JSX.Element {
@@ -64,15 +65,31 @@ export function LapList({ store }: LapListProps): JSX.Element {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800 text-slate-200">
-            {snapshot.passings.map(({ record, lapTimeUs }) => (
-              <tr key={`${record.passingNumber}-${record.rtcTimeUs.toString()}`}>
-                <td className="px-4 py-3 font-mono text-slate-50">{record.passingNumber}</td>
-                <td className="px-4 py-3 font-mono text-cyan-100">{formatLapTime(lapTimeUs)}</td>
-                <td className="px-4 py-3 font-mono">{formatRtcTime(record.rtcTimeUs)}</td>
-                <td className="px-4 py-3 font-mono">{record.strength}</td>
-                <td className="px-4 py-3 font-mono">{record.hits}</td>
-              </tr>
-            ))}
+            {snapshot.passings.map(({ record, lapTimeUs }) => {
+              const isBest =
+                lapTimeUs !== null &&
+                snapshot.bestLapUs !== null &&
+                lapTimeUs === snapshot.bestLapUs;
+              return (
+                <tr
+                  key={`${record.passingNumber}-${record.rtcTimeUs.toString()}`}
+                  className={isBest ? 'bg-emerald-900/40' : undefined}
+                >
+                  <td className="px-4 py-3 font-mono text-slate-50">{record.passingNumber}</td>
+                  <td className="px-4 py-3 font-mono text-cyan-100">
+                    {isBest ? (
+                      <span aria-label="best lap" className="mr-1 text-emerald-300">
+                        ★
+                      </span>
+                    ) : null}
+                    {formatLapTime(lapTimeUs)}
+                  </td>
+                  <td className="px-4 py-3 font-mono">{formatRtcTime(record.rtcTimeUs)}</td>
+                  <td className="px-4 py-3 font-mono">{record.strength}</td>
+                  <td className="px-4 py-3 font-mono">{record.hits}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

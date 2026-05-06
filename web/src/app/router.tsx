@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { LapList } from '../features/laps/LapList';
+import { LatestLapHero } from '../features/laps/LatestLapHero';
 import type { PassingsStore } from '../features/laps/passingsStore';
 import { SettingsPage } from '../features/settings/SettingsPage';
 import type { WsClient } from '../transport/wsClient';
@@ -40,5 +41,10 @@ export function AppRouter({ store, wsClient }: AppRouterProps): JSX.Element {
     return <SettingsPage />;
   }
 
-  return <LapList store={store} wsClient={wsClient} />;
+  return (
+    <div className="flex flex-col gap-4">
+      <LatestLapHero store={store} />
+      <LapList store={store} wsClient={wsClient} />
+    </div>
+  );
 }
