@@ -15,6 +15,7 @@ package httpsrv
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"net"
@@ -179,7 +180,11 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid body"})
 		return
 	}
-	if body.Passphrase == "" || body.Passphrase != s.auth.passphrase {
+	// Constant-time compare so a side-channel can't infer a prefix-match
+	// of the passphrase from response timing. ConstantTimeCompare returns
+	// 0 (not 1) when lengths differ, so the empty-string case is covered
+	// implicitly — no separate guard needed.
+	if subtle.ConstantTimeCompare([]byte(body.Passphrase), []byte(s.auth.passphrase)) != 1 {
 		s.auth.recordFailure(ip)
 		s.auth.audit.LogAuth(ip, "login failed")
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid passphrase"})
