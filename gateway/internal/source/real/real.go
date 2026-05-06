@@ -43,6 +43,12 @@ type Source struct {
 	buf     []byte
 }
 
+// recvBufSize is the per-Read scratch buffer. Aligned with the
+// docs/protocol-p3.md §1 "受信バッファ目安: 10240 bytes" and the reference
+// implementation `AmbP3/decoder.py`'s recv(10240). TCP itself does the
+// chunking; this size is just how much we let conn.Read return at once.
+const recvBufSize = 10240
+
 // New returns a Source ready to call Read. Logger and Backoff must be non-nil.
 func New(addr string, bo *upstream.Backoff, logger *zap.Logger) *Source {
 	return &Source{
@@ -51,7 +57,7 @@ func New(addr string, bo *upstream.Backoff, logger *zap.Logger) *Source {
 		Logger:  logger,
 		Dial:    (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
 		Sleep:   ctxSleep,
-		buf:     make([]byte, 4096),
+		buf:     make([]byte, recvBufSize),
 	}
 }
 
