@@ -122,7 +122,7 @@ gateway.exe [--config <path>] [--mock | --replay <file> | --record <file>] [--re
 | オプション | 既定値           | 説明 |
 |------------|------------------|------|
 | `--config` | `./config.json`  | 設定ファイル |
-| `--mock`   | (off)            | 受信ソースを内蔵 Mock TCP サーバ相当に切替 |
+| `--mock`   | (off)            | 受信ソースを内蔵 Mock(3 トランスポンダー / ID 1 / 2 / 3、~18 s ラップ ± 2 s ジッター)に切替。詳細は `docs/test-strategy.md` §5.2 |
 | `--replay` | (なし)           | `.bin` の録画ファイルを再生(等速/早送り/即時は config / `--replay-speed` 側) |
 | `--replay-speed` | (空 = config を使用) | `realtime` / `fast`(realtime × 10) / `instant` のいずれか。`config.json:replay.speed` を上書きする。`--replay` 以外と組合せた場合は警告ログのみで無視 |
 | `--record` | (なし)           | 受信した生バイト列をファイルへ記録(デバッグ/再生フィクスチャ用) |
