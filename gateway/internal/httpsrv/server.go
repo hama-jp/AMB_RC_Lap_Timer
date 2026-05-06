@@ -141,8 +141,8 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/api/config", s.requireAdminAuth(s.handleAdminConfig))
 	mux.HandleFunc("/admin", s.requireAdminAuth(s.handleAdminStub))
 
-	// The SPA serves /admin/login and any future /admin sub-routes (#84).
-	// They flow through the static handler below.
+	// All other paths (incl. #/admin/* SPA routes — the hash never
+	// reaches the server) hit the embedded SPA bundle.
 	mux.Handle("/", s.staticHandler())
 }
 
