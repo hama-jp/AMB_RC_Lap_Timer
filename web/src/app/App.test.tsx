@@ -93,7 +93,9 @@ describe('App integration', () => {
 
     expect(wsClient.connectCount).toBe(1);
     expect(screen.getByText('42')).toBeInTheDocument();
-    expect(screen.getByText('—')).toBeInTheDocument();
+    // The Hero and the LapList row each render the lap time as '—' (null lap on
+    // first PASSING since no previous time is known yet), so we expect 2.
+    expect(screen.getAllByText('—')).toHaveLength(2);
     expect(screen.getByText('1.234567 s')).toBeInTheDocument();
     expect(screen.getByText('88')).toBeInTheDocument();
     expect(screen.getByText('9')).toBeInTheDocument();

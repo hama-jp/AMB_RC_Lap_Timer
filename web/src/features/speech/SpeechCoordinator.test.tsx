@@ -8,7 +8,7 @@ import { SpeechCoordinator } from './SpeechCoordinator';
 
 class FakePassingsStore implements PassingsStore {
   private readonly subscribers = new Set<(snapshot: PassingsSnapshot) => void>();
-  private snapshot: PassingsSnapshot = { targetTransponder: 1, passings: [] };
+  private snapshot: PassingsSnapshot = { targetTransponder: 1, passings: [], bestLapUs: null };
 
   start(): () => void {
     return () => {};
@@ -19,7 +19,7 @@ class FakePassingsStore implements PassingsStore {
   }
 
   reset(): void {
-    this.emit({ targetTransponder: 1, passings: [] });
+    this.emit({ targetTransponder: 1, passings: [], bestLapUs: null });
   }
 
   subscribe(handler: (snapshot: PassingsSnapshot) => void): () => void {
@@ -79,7 +79,7 @@ describe('SpeechCoordinator', () => {
     render(<SpeechCoordinator controller={controller} store={store} />);
 
     act(() => {
-      store.emit({ targetTransponder: 1, passings: [entry(21_789_000n)] });
+      store.emit({ targetTransponder: 1, passings: [entry(21_789_000n)], bestLapUs: null });
     });
 
     expect(controller.speak).toHaveBeenCalledWith('21.789秒');
@@ -92,7 +92,7 @@ describe('SpeechCoordinator', () => {
     render(<SpeechCoordinator controller={controller} store={store} />);
 
     act(() => {
-      store.emit({ targetTransponder: 1, passings: [entry(null)] });
+      store.emit({ targetTransponder: 1, passings: [entry(null)], bestLapUs: null });
     });
 
     expect(controller.speak).not.toHaveBeenCalled();
@@ -104,7 +104,7 @@ describe('SpeechCoordinator', () => {
     render(<SpeechCoordinator controller={controller} store={store} />);
 
     act(() => {
-      store.emit({ targetTransponder: 1, passings: [entry(21_789_000n)] });
+      store.emit({ targetTransponder: 1, passings: [entry(21_789_000n)], bestLapUs: null });
     });
 
     expect(controller.speak).not.toHaveBeenCalled();
@@ -118,8 +118,8 @@ describe('SpeechCoordinator', () => {
     render(<SpeechCoordinator controller={controller} store={store} />);
 
     act(() => {
-      store.emit({ targetTransponder: 1, passings: [topEntry] });
-      store.emit({ targetTransponder: 1, passings: [topEntry] });
+      store.emit({ targetTransponder: 1, passings: [topEntry], bestLapUs: null });
+      store.emit({ targetTransponder: 1, passings: [topEntry], bestLapUs: null });
     });
 
     expect(controller.speak).toHaveBeenCalledTimes(1);
@@ -132,7 +132,7 @@ describe('SpeechCoordinator', () => {
     render(<SpeechCoordinator controller={controller} store={store} />);
 
     act(() => {
-      store.emit({ targetTransponder: 1, passings: [entry(21_789_000n)] });
+      store.emit({ targetTransponder: 1, passings: [entry(21_789_000n)], bestLapUs: null });
     });
 
     expect(controller.speak).not.toHaveBeenCalled();

@@ -13,6 +13,11 @@ export interface PassingEntry {
 export interface PassingsSnapshot {
   readonly targetTransponder: number | null;
   readonly passings: readonly PassingEntry[];
+  /**
+   * Smallest non-null `lapTimeUs` across `passings`. Cleared on reset / reconnect.
+   * `null` when fewer than two matching passings have been observed.
+   */
+  readonly bestLapUs: bigint | null;
 }
 
 export interface PassingsStore {
@@ -46,6 +51,7 @@ class PassingsStoreImpl implements PassingsStore {
   private readonly limit: number;
   private targetTransponder: number | null;
   private passings: PassingEntry[] = [];
+  private bestLapUs: bigint | null = null;
   private previousPassing: PassingRecord | null = null;
   private stopWsMessage: (() => void) | null = null;
   private stopWsState: (() => void) | null = null;
@@ -81,12 +87,14 @@ class PassingsStoreImpl implements PassingsStore {
     return {
       targetTransponder: this.targetTransponder,
       passings: this.passings,
+      bestLapUs: this.bestLapUs,
     };
   }
 
   reset(): void {
     this.decoder.reset();
     this.passings = [];
+    this.bestLapUs = null;
     this.previousPassing = null;
     this.emit();
   }
@@ -130,6 +138,14 @@ class PassingsStoreImpl implements PassingsStore {
       };
       this.previousPassing = result.record;
       this.passings = [entry, ...this.passings].slice(0, this.limit);
+      // Best lap is the smallest non-null lapTimeUs we've seen since reset.
+      // Strict "<" so the first occurrence of a tied time keeps the badge.
+      if (
+        entry.lapTimeUs !== null &&
+        (this.bestLapUs === null || entry.lapTimeUs < this.bestLapUs)
+      ) {
+        this.bestLapUs = entry.lapTimeUs;
+      }
       changed = true;
     }
 
