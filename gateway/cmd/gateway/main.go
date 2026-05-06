@@ -141,6 +141,31 @@ func run(fl cliFlags) error {
 	}
 	defer log.Close()
 
+	// /admin one-time passphrase (docs/architecture.md §3.5.4).
+	// Logged exactly once via the shared zap logger — that single Info
+	// reaches both stdout (Console encoder) and gateway.log (JSON encoder).
+	// A fresh value is generated every restart so there is no long-lived
+	// secret to manage.
+	adminPassphrase, err := httpsrv.GeneratePassphrase()
+	if err != nil {
+		return fmt.Errorf("admin passphrase: %w", err)
+	}
+	log.Info("admin passphrase issued",
+		zap.String("passphrase", adminPassphrase),
+		zap.String("note", "valid until gateway restart; required for /admin"))
+
+	// Audit log writer for /admin events (login, logout, config changes).
+	// Same rotation policy as gateway.log, separate filename.
+	adminAudit, err := logging.NewAuditWriter(logging.AuditOptions{
+		Dir:        cfg.Logging.Dir,
+		MaxSizeMB:  cfg.Logging.MaxSizeMB,
+		MaxBackups: cfg.Logging.MaxBackups,
+	})
+	if err != nil {
+		return fmt.Errorf("admin audit init: %w", err)
+	}
+	defer adminAudit.Close()
+
 	upstreamAddr := net.JoinHostPort(cfg.Upstream.Host, strconv.Itoa(cfg.Upstream.Port))
 
 	// --replay-speed is only consulted by the replay source. If the operator
@@ -175,10 +200,12 @@ func run(fl cliFlags) error {
 		return fmt.Errorf("webassets: %w", err)
 	}
 	httpServer := httpsrv.New(httpsrv.Config{
-		Addr:    cfg.Listen,
-		Version: version,
-		WebFS:   webFS,
-		LogPath: filepath.Join(cfg.Logging.Dir, "gateway.log"),
+		Addr:            cfg.Listen,
+		Version:         version,
+		WebFS:           webFS,
+		LogPath:         filepath.Join(cfg.Logging.Dir, "gateway.log"),
+		AdminPassphrase: adminPassphrase,
+		AdminAudit:      adminAudit,
 	}, h, log.Logger)
 
 	// Source.

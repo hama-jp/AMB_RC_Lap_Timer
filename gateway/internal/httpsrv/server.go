@@ -24,6 +24,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/hama-jp/AMB_RC_Lap_Timer/gateway/internal/hub"
+	"github.com/hama-jp/AMB_RC_Lap_Timer/gateway/internal/logging"
 )
 
 // UpstreamState is a label the /healthz handler reports. The gateway main
@@ -53,6 +54,14 @@ type Config struct {
 	LogPath string
 	// MaxLogTailLines bounds the /logs response. 0 = use default.
 	MaxLogTailLines int
+	// AdminPassphrase is the one-time passphrase that grants /admin access.
+	// Generated once per process at startup (see cmd/gateway). Empty
+	// disables /admin auth — only test code should leave this empty.
+	AdminPassphrase string
+	// AdminAudit is the writer for logs/admin-audit.log. Nil is permitted;
+	// auth handlers fall back to no-op audit (LogChange / LogAuth on a nil
+	// receiver are safe).
+	AdminAudit *logging.AuditWriter
 }
 
 // Server bundles the http.Server, the hub, and the runtime state needed by
@@ -64,6 +73,7 @@ type Server struct {
 	srv      *http.Server
 	started  time.Time
 	upstream atomic.Value // UpstreamState
+	auth     *adminAuth
 }
 
 // New builds a Server but does not start listening. Pass the same hub the
@@ -80,6 +90,7 @@ func New(cfg Config, h *hub.Hub, log *zap.Logger) *Server {
 		hub:     h,
 		log:     log,
 		started: time.Now(),
+		auth:    newAdminAuth(cfg.AdminPassphrase, cfg.AdminAudit),
 	}
 	s.upstream.Store(UpstreamConnecting)
 	mux := http.NewServeMux()
@@ -118,9 +129,18 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/healthz", s.handleHealthz)
-	mux.HandleFunc("/admin", s.handleAdminStub)
 	mux.HandleFunc("/logs", s.handleLogs)
 	mux.HandleFunc("/ws", s.handleWS)
+
+	// /admin auth surface — login/logout are public, everything else
+	// requires a valid session cookie. The middleware redirects browsers
+	// to /admin/login and replies 401 JSON to API clients (auth_admin.go).
+	mux.HandleFunc("/admin/api/login", s.handleAdminLogin)
+	mux.HandleFunc("/admin/api/logout", s.handleAdminLogout)
+	mux.HandleFunc("/admin", s.requireAdminAuth(s.handleAdminStub))
+
+	// The SPA serves /admin/login and any future /admin sub-routes (#84).
+	// They flow through the static handler below.
 	mux.Handle("/", s.staticHandler())
 }
 
