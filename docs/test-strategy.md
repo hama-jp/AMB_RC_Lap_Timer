@@ -2,7 +2,7 @@
 
 本書は実機 AMB デコーダーが手元にない状態でも開発・回帰検証を回せるテスト戦略を定義する。前提となる構成は `docs/architecture.md`、プロトコル仕様は `docs/protocol-p3.md`、CI 構成は `docs/ci-cd.md` を参照。
 
-> Status: **Draft v0.1.5**
+> Status: **Draft v0.1.6**
 
 ---
 
@@ -221,14 +221,27 @@
 | **USB 抜き挿し** | 5 分 | 起動中に USB を抜く → ログ書込みエラー警告のみで停止しない / 上流 TCP・WS fan-out は継続 / 再挿入後も停止しない |
 | **FAT32 配置** | 30 分 | FAT32 フォーマットの USB に展開し、ログ・records が `max_size_mb` でローテーションされる(4GB 上限に到達しない) |
 
-### 6.3 α(早期検証)と β(リリース前)の位置づけ
+### 6.3 α / β / β-現地 の位置づけ
 
-`docs/roadmap.md` で 2 度実施するタイミングを明示している。
+実装が #1〜#8 まで完了した時点で α と β の必須シナリオは内容が大きく重なるので、**α は自走分のみで終了し、人手シナリオはまとめて β に統合**する。さらに会場ネットワークへのアクセスは限られるため、β を「**自宅 dry-run**(AMB 以外を全部済ませる)」と「**現地確認**(AMB 疎通のみ)」の 2 段階に分ける。
 
-| 段階 | 実施タイミング | 必須シナリオ | 任意シナリオ |
-|---|---|---|---|
-| **Field Test α** | 実装フェーズ #6(音声読み上げ)完了後 | Smoke / Multi-client / Firewall fresh / **USB 起動** | mDNS |
-| **Field Test β** | 実装フェーズ #8(設定 WebUI)完了後 | Sleep/Wake / WiFi drop / Soak 1h / **USB 抜き挿し** / **FAT32 配置** | Soak 8h、再 Smoke |
+| 段階 | 実施タイミング | 場所 | 必須シナリオ | 任意シナリオ |
+|---|---|---|---|---|
+| **Field Test α-1**(自走分、完了) | 実装フェーズ #6 完了後 | 開発機 / CI 不可 | runall 5 シナリオ(Smoke / Replay / ZIP shape / USB pathshift / Soak 短縮) | — |
+| **Field Test β-1**(自宅 dry-run) | 実装フェーズ #8 完了後 | 自宅 LAN(自分の PC + 自分の端末) | Smoke 実機 / iOS Safari Speech / Multi-client / Sleep-Wake / WiFi drop / Soak 1h / `/admin` 手動 E2E / USB 起動 / USB 抜き挿し | mDNS / FAT32 配置 |
+| **Field Test β-2**(現地確認) | β-1 完了後 | レース場 LAN | AMB 疎通(`ping <AMB IP>` + `gateway --upstream` で実フレーム到達確認)| 走行中の Soak 観察 |
+
+#### β-1 自宅 dry-run の前提
+- 自分のノート PC は **自宅で初回起動・Firewall 承認済み**(SmartScreen / Firewall fresh は事実上スキップ)
+- mock マルチ ponder(`docs/test-strategy.md` §5.2)で 3 ID(1 / 2 / 3)が流れるので、SPA の `settings.transponder` を 1 にして検証
+- Soak 1h は **`scripts\fieldtest-soak.ps1 -DurationMin 60`** で自動化可(Windows エージェントに自走させても良い)
+
+#### β-2 現地確認の最小スコープ
+- ノート PC を会場 WiFi に接続(or 業務 WiFi を借りる)
+- `ping <AMB IP>` が通ることを確認
+- `gateway.exe --upstream <AMB IP>:5403` で起動 → ログに「TCP 接続成功」が出ることを確認
+- 自分のトランスポンダーで 1 周走行 → スマホに lap 秒が表示・読み上げされることを確認
+- これだけで **β-2 は完了**(他は β-1 で済んでいる)
 
 ### 6.4 Field Test 用ツール群
 
@@ -472,6 +485,7 @@ go run .\gateway\cmd\anonymize `
 ---
 
 ## 12. 改訂履歴
+- v0.1.6 (2026-05-06): §6.3 を再構成。α は自走分(#73 / PR #75 で完了)で打ち切り、人手シナリオは β に統合。β を「β-1 自宅 dry-run(AMB 以外)」「β-2 現地(AMB 疎通のみ)」の 2 段階に分割。SmartScreen / Firewall fresh は自分のノート PC 持ち込み運用ではスキップで OK と明記。
 - v0.1.5 (2026-05-06): §11 #9 を解消。`docs/field-test-log.md` v0.1 を導入し、§6 から参照。1 セッション = 1 セクション、シナリオごとに `✅/⚠/❌`、派生 Issue 番号を必ず記録、自動収集ログは別ファイル化する方針。
 - v0.1.4 (2026-05-05): §11 #1 を解消。`gateway/testdata/captured/<session>.expected.json` のスキーマを §11.1 として正式化。BigInt は string 表現。`web` パーサ PR(#2)で session-2026-05-05.expected.json を生成・コミット。
 - v0.1.3 (2026-05-04): §11 #3 / #4 を gateway-recorder PR の確定事項で更新。`.timing.csv` 形式は `offset_ms,length_bytes` 2 列で確定(#3)、`golangci-lint` / `testify` は本 PR 時点では不採用とし、必要時に別 Issue 起票で再検討(#4)。
