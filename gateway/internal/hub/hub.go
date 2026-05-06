@@ -140,6 +140,33 @@ func (h *Hub) Count() int {
 	return len(h.clients)
 }
 
+// SetLimits updates the per-Hub safety cap and per-client buffer length.
+// New values are picked up by the next Add call; already-registered
+// clients keep their original buffer (resizing a buffered channel in flight
+// would force us to drop or copy frames, neither of which is what
+// docs/architecture.md §3.5.5 promises). Non-positive values fall back to
+// the package defaults so a partial admin payload cannot disable the cap.
+func (h *Hub) SetLimits(maxClients, bufferLen int) {
+	if maxClients <= 0 {
+		maxClients = DefaultMaxClients
+	}
+	if bufferLen <= 0 {
+		bufferLen = DefaultClientBufferLen
+	}
+	h.mu.Lock()
+	h.maxClients = maxClients
+	h.bufferLen = bufferLen
+	h.mu.Unlock()
+}
+
+// Limits returns the current cap / buffer length. Mainly for tests and
+// /admin diagnostics.
+func (h *Hub) Limits() (maxClients, bufferLen int) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.maxClients, h.bufferLen
+}
+
 // Close removes every client and prevents future Adds. Safe to call once
 // per Hub; subsequent calls are no-ops.
 func (h *Hub) Close() {

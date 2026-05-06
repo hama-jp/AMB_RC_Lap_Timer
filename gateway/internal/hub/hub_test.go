@@ -200,3 +200,39 @@ func TestBroadcast_ToRemovedClient_DoesNotPanic(t *testing.T) {
 	default:
 	}
 }
+
+func TestSetLimits_AppliesToNextAdd(t *testing.T) {
+	// Start with a 2-client cap; the third Add must fail.
+	h := New(zap.NewNop(), 2, 4)
+	defer h.Close()
+	if _, err := h.Add(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Add(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Add(); !errors.Is(err, ErrTooManyClients) {
+		t.Fatalf("3rd Add: got %v want ErrTooManyClients", err)
+	}
+
+	// Raise the cap; 3rd Add now succeeds.
+	h.SetLimits(5, 8)
+	max, buf := h.Limits()
+	if max != 5 || buf != 8 {
+		t.Errorf("Limits after SetLimits: got (%d,%d) want (5,8)", max, buf)
+	}
+	if _, err := h.Add(); err != nil {
+		t.Errorf("3rd Add post-raise: %v", err)
+	}
+}
+
+func TestSetLimits_NonPositive_FallsBackToDefaults(t *testing.T) {
+	h := New(zap.NewNop(), 10, 4)
+	defer h.Close()
+	h.SetLimits(0, -1)
+	max, buf := h.Limits()
+	if max != DefaultMaxClients || buf != DefaultClientBufferLen {
+		t.Errorf("Limits: got (%d,%d) want (%d,%d)",
+			max, buf, DefaultMaxClients, DefaultClientBufferLen)
+	}
+}
