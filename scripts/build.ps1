@@ -99,5 +99,21 @@ try {
     Pop-Location
 }
 
+# ── 4. Bundle operator-facing files next to the EXE ──────────────────────
+# Operators run gateway.exe directly from this folder, so the gateway needs
+# config.example.json next to it for first-launch bootstrap (main.go
+# ensureConfigFile), and the README is the printed user manual.
+$bundleSources = @(
+    @{ Src = (Join-Path $gatewayDir 'config.example.json'); Dst = (Join-Path $OutDir 'config.example.json') }
+    @{ Src = (Join-Path $repoRoot 'packaging\README.txt');   Dst = (Join-Path $OutDir 'README.txt')           }
+)
+foreach ($b in $bundleSources) {
+    if (-not (Test-Path $b.Src)) {
+        throw "bundle source missing: $($b.Src)"
+    }
+    Copy-Item -LiteralPath $b.Src -Destination $b.Dst -Force
+    Write-Host "==> [bundle] $(Split-Path $b.Dst -Leaf)" -ForegroundColor Cyan
+}
+
 $size = '{0:N2} MB' -f ((Get-Item $exePath).Length / 1MB)
 Write-Host "==> done: $exePath ($size, version=$Version)" -ForegroundColor Green

@@ -16,6 +16,9 @@
 *.cmd    text eol=crlf
 *.ps1    text eol=crlf
 
+# Operator-facing plain text shipped with the EXE: CRLF for Notepad
+packaging/*.txt text eol=crlf
+
 # Binary
 *.bin    binary
 *.png    binary

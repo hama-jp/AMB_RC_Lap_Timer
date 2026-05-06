@@ -8,14 +8,13 @@
     Required files (hard fail if missing — the operator can't run the
     gateway without them):
       - gateway.exe
-      - config.example.json
+      - config.example.json   (bundled by build.ps1; gateway bootstraps
+                               config.json from this on first launch)
+      - README.txt            (operator manual, bundled by build.ps1
+                               from packaging/README.txt — Issue #37)
 
     Strongly preferred (warn if missing):
-      - config.json   (build.ps1 may not place this; gateway copies from
-                       config.example.json on first run, so the warning
-                       is informational only)
-      - packaging\README.txt   (Issue #37 not yet merged; per Issue #70
-                                review notes this is skip-with-warning)
+      - config.json   (only present after first launch; informational only)
 
     Size sanity check: 2 MB ≤ size ≤ 100 MB. Lower means the SPA didn't
     embed; higher suggests a stray asset that shouldn't ship.
@@ -55,8 +54,8 @@ try {
         throw "dist directory missing: $distDir (run scripts\build.ps1)"
     }
 
-    $required = @('gateway.exe', 'config.example.json')
-    $optional = @('config.json', 'packaging\README.txt')
+    $required = @('gateway.exe', 'config.example.json', 'README.txt')
+    $optional = @('config.json')
 
     $missingRequired = @()
     foreach ($f in $required) {
