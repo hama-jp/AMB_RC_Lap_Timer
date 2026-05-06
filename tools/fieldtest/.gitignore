@@ -1,0 +1,5 @@
+*.csv
+*.jsonl
+recorder*.csv
+recorder*.jsonl
+soak*.csv
