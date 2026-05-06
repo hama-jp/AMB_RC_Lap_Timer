@@ -64,6 +64,11 @@ func New(addr string, bo *upstream.Backoff, logger *zap.Logger) *Source {
 // that case, a watcher goroutine closes the conn when ctx is cancelled,
 // which causes the in-flight Read to return so we can return ctx.Err().
 // (Field incident 2026-05-05; see docs/incidents/2026-05-05-recorder-csv-flush.md)
+//
+// The watcher must hold a local copy of the conn — once Read returns, the
+// parent may set s.conn = nil and re-dial. If the watcher then woke on a
+// late ctx cancellation it would otherwise dereference nil (Issue #40,
+// originally surfaced by go test -race in CI on Linux).
 func (s *Source) Read(ctx context.Context) ([]byte, error) {
 	for {
 		if s.conn == nil {
@@ -71,25 +76,26 @@ func (s *Source) Read(ctx context.Context) ([]byte, error) {
 				return nil, err
 			}
 		}
+		conn := s.conn
 		readDone := make(chan struct{})
 		go func() {
 			select {
 			case <-ctx.Done():
-				_ = s.conn.Close()
+				_ = conn.Close()
 			case <-readDone:
 			}
 		}()
-		n, err := s.conn.Read(s.buf)
+		n, err := conn.Read(s.buf)
 		close(readDone)
 		if err != nil {
 			if ctx.Err() != nil {
-				_ = s.conn.Close()
+				_ = conn.Close()
 				s.conn = nil
 				return nil, ctx.Err()
 			}
 			s.Logger.Warn("upstream read error, will reconnect",
 				zap.String("addr", s.Addr), zap.Error(err))
-			_ = s.conn.Close()
+			_ = conn.Close()
 			s.conn = nil
 			// loop back to reconnect
 			continue
