@@ -52,8 +52,8 @@ func (c *fakeConn) SetWriteDeadline(time.Time) error { return nil }
 func newSourceWithFakes(t *testing.T, dial DialFunc) *Source {
 	t.Helper()
 	return &Source{
-		Addr:    "fake:5403",
-		Backoff: &upstream.Backoff{Initial: time.Microsecond, Max: time.Microsecond, Jitter: 0, Rand: rand.New(rand.NewSource(1))},
+		addr:    "fake:5403",
+		backoff: &upstream.Backoff{Initial: time.Microsecond, Max: time.Microsecond, Jitter: 0, Rand: rand.New(rand.NewSource(1))},
 		Logger:  zap.NewNop(),
 		Dial:    dial,
 		Sleep:   func(ctx context.Context, d time.Duration) error { return nil }, // no real sleep
@@ -247,6 +247,72 @@ func TestRead_NoNilDerefWhenCtxCancelledDuringBlockingRead(t *testing.T) {
 		case <-time.After(2 * time.Second):
 			t.Fatalf("iter %d: Read did not return within 2s after cancel", i)
 		}
+	}
+}
+
+func TestApplyUpstream_UpdatesAddrAndDropsConn(t *testing.T) {
+	// First dial gives conn1 (the conn admin will close); second dial
+	// observes the new addr and gives conn2.
+	conn1 := newBlockingConn()
+	conn2 := newBlockingConn()
+	var dialAddrs []string
+	var idx atomic.Int32
+	dial := func(_ context.Context, _, addr string) (net.Conn, error) {
+		dialAddrs = append(dialAddrs, addr)
+		i := idx.Add(1) - 1
+		if i == 0 {
+			return conn1, nil
+		}
+		return conn2, nil
+	}
+	s := newSourceWithFakes(t, dial)
+
+	// Run Read in a goroutine; cancel via the context once we're done so
+	// the test exits cleanly.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		_, _ = s.Read(ctx)
+		close(done)
+	}()
+
+	// Wait for the first dial to happen.
+	deadline := time.Now().Add(2 * time.Second)
+	for idx.Load() < 1 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	s.ApplyUpstream("10.0.0.5", 5403)
+	if got := s.Addr(); got != "10.0.0.5:5403" {
+		t.Errorf("Addr after ApplyUpstream: got %q want %q", got, "10.0.0.5:5403")
+	}
+	cancel()
+	<-done
+
+	if len(dialAddrs) < 1 || dialAddrs[0] != "fake:5403" {
+		t.Errorf("first dial addr: got %v", dialAddrs)
+	}
+}
+
+func TestApplyBackoff_ReplacesBackoff(t *testing.T) {
+	s := newSourceWithFakes(t, func(_ context.Context, _, _ string) (net.Conn, error) {
+		return nil, errors.New("nope")
+	})
+	old := s.Backoff()
+	s.ApplyBackoff(2*time.Second, 30*time.Second, 0.5)
+	got := s.Backoff()
+	if got == old {
+		t.Errorf("Backoff() returned same pointer; expected replacement")
+	}
+	if got.Initial != 2*time.Second {
+		t.Errorf("Initial: got %v want 2s", got.Initial)
+	}
+	if got.Max != 30*time.Second {
+		t.Errorf("Max: got %v want 30s", got.Max)
+	}
+	if got.Jitter != 0.5 {
+		t.Errorf("Jitter: got %v want 0.5", got.Jitter)
 	}
 }
 

@@ -216,6 +216,27 @@ func run(fl cliFlags) error {
 	defer src.Close()
 	httpServer.SetUpstreamState(initialState)
 
+	// /admin/api/config: hand the live config + apply hooks to the HTTP
+	// layer. Hooks only fire when the underlying source / hub can absorb
+	// the change at runtime; --mock / --replay sources don't need an
+	// upstream rewire so we leave Upstream unset for them, and the
+	// classifier reports those fields as "applied" (next start picks them
+	// up from disk) per docs/architecture.md §3.5.5.
+	hooks := httpsrv.ApplyHooks{
+		HubLimits: h.SetLimits,
+	}
+	if rs, ok := src.(*realsrc.Source); ok {
+		hooks.Upstream = rs.ApplyUpstream
+		hooks.Reconnect = func(initialMs, maxMs int, jitter float64) {
+			rs.ApplyBackoff(
+				time.Duration(initialMs)*time.Millisecond,
+				time.Duration(maxMs)*time.Millisecond,
+				jitter,
+			)
+		}
+	}
+	httpServer.SetAdminConfigState(cfg, fl.configPath, hooks)
+
 	// Recorder, optional.
 	var rec *recorder.Recorder
 	if fl.recordPath != "" {

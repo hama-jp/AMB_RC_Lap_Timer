@@ -67,13 +67,14 @@ type Config struct {
 // Server bundles the http.Server, the hub, and the runtime state needed by
 // /healthz. Construct via New, then call ListenAndServe.
 type Server struct {
-	cfg      Config
-	hub      *hub.Hub
-	log      *zap.Logger
-	srv      *http.Server
-	started  time.Time
-	upstream atomic.Value // UpstreamState
-	auth     *adminAuth
+	cfg         Config
+	hub         *hub.Hub
+	log         *zap.Logger
+	srv         *http.Server
+	started     time.Time
+	upstream    atomic.Value // UpstreamState
+	auth        *adminAuth
+	adminConfig atomic.Pointer[configState] // /admin/api/config snapshot + hooks
 }
 
 // New builds a Server but does not start listening. Pass the same hub the
@@ -137,6 +138,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// to /admin/login and replies 401 JSON to API clients (auth_admin.go).
 	mux.HandleFunc("/admin/api/login", s.handleAdminLogin)
 	mux.HandleFunc("/admin/api/logout", s.handleAdminLogout)
+	mux.HandleFunc("/admin/api/config", s.requireAdminAuth(s.handleAdminConfig))
 	mux.HandleFunc("/admin", s.requireAdminAuth(s.handleAdminStub))
 
 	// The SPA serves /admin/login and any future /admin sub-routes (#84).
