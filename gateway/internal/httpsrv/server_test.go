@@ -7,7 +7,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,6 +24,11 @@ import (
 	"github.com/hama-jp/AMB_RC_Lap_Timer/gateway/internal/hub"
 )
 
+// testPassphrase is fixed so tests can build a session cookie without
+// scraping it out of the response. Production callers always pass a fresh
+// random passphrase via httpsrv.GeneratePassphrase.
+const testPassphrase = "test-passphrase-do-not-ship"
+
 func newTestServer(t *testing.T, h *hub.Hub, opts ...func(*Config)) *httptest.Server {
 	t.Helper()
 	cfg := Config{
@@ -30,6 +37,7 @@ func newTestServer(t *testing.T, h *hub.Hub, opts ...func(*Config)) *httptest.Se
 			"index.html":    &fstest.MapFile{Data: []byte("<html><body>SPA placeholder</body></html>")},
 			"assets/app.js": &fstest.MapFile{Data: []byte("console.log('app');")},
 		},
+		AdminPassphrase: testPassphrase,
 	}
 	for _, o := range opts {
 		o(&cfg)
@@ -38,6 +46,28 @@ func newTestServer(t *testing.T, h *hub.Hub, opts ...func(*Config)) *httptest.Se
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
 	return ts
+}
+
+// adminLogin POSTs the test passphrase and returns the cookie jar with the
+// session cookie set, ready to attach to subsequent requests.
+func adminLogin(t *testing.T, ts *httptest.Server) *http.Client {
+	t.Helper()
+	body := strings.NewReader(`{"passphrase":"` + testPassphrase + `"}`)
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/admin/api/login", body)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("login status: got %d want 200, body=%s", resp.StatusCode, b)
+	}
+	jar, _ := cookiejar.New(nil)
+	u, _ := url.Parse(ts.URL)
+	jar.SetCookies(u, resp.Cookies())
+	return &http.Client{Jar: jar}
 }
 
 func TestHealthz_ReturnsExpectedShape(t *testing.T) {
@@ -134,11 +164,12 @@ func TestStatic_PathTraversal_Rejected(t *testing.T) {
 	}
 }
 
-func TestAdminStub_Returns200_WithPlaceholder(t *testing.T) {
+func TestAdmin_Authenticated_ReturnsStub(t *testing.T) {
 	h := hub.New(zap.NewNop(), 10, 4)
 	defer h.Close()
 	ts := newTestServer(t, h)
-	resp, err := http.Get(ts.URL + "/admin")
+	client := adminLogin(t, ts)
+	resp, err := client.Get(ts.URL + "/admin")
 	if err != nil {
 		t.Fatal(err)
 	}
