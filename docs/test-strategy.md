@@ -176,7 +176,10 @@
 - 再生: `.timing.csv` がなければ `instant` 相当で動作
 
 ### 5.2 Mock シナリオ
-- 初期は **コード内に小さな PASSING 連発シナリオ**を 1 つ持つ(1.5 秒間隔で乱数強度の PASSING を流す)
+- `gateway/internal/source/mock.New()` は **3 トランスポンダー(ID 1 / 2 / 3)を ~18 秒ラップ ± 2 秒ジッター** でラウンドロビンする実走風シナリオを返す。SPA の `settings.transponder` を 1 / 2 / 3 のいずれかに合わせれば、自分のラップが流れているように見える(現地デモ・自宅リハーサル両用)
+- フレームの RTC_TIME は **mock 起動からの実経過時間**(μs)。各ポンダーの連続フレーム間で約 lap 時間ぶん進むので、SPA のラップ計算ロジックがそのまま動作する
+- レガシー単 ponder モード(`Interval` のみ設定 / `Transponders` 空):テストや時間決定論が要る場面で `&Source{Interval: 0}` 直接構築で利用可能
+- ID は `tools/fieldtest/tcp-emitter` のデフォルト(`--ponders 1,2,3`)と揃えてあり、mock と tcp-emitter を切り替えても SPA 側の設定は変えなくてよい
 - 余裕が出たら、シナリオを `testdata/scenarios/<name>.yaml` で記述してロードできるようにする(別 Issue)
 
 ### 5.3 Record の運用
