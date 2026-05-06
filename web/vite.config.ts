@@ -18,6 +18,18 @@ export default defineConfig({
     sourcemap: true,
     emptyOutDir: true,
   },
+  // Dev server runs on :5173 but the SPA talks to gateway routes
+  // (/admin, /admin/api/*, /healthz, /logs, /ws). Proxy them to :8080 so
+  // the browser sees a single origin and HttpOnly admin cookies work.
+  // (docs/architecture.md §5.3.)
+  server: {
+    proxy: {
+      '/ws': { target: 'ws://localhost:8080', ws: true },
+      '/healthz': 'http://localhost:8080',
+      '/logs': 'http://localhost:8080',
+      '/admin': 'http://localhost:8080',
+    },
+  },
   test: {
     globals: true,
     environment: 'node',

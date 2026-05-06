@@ -31,8 +31,11 @@ const (
 	// AdminSessionCookie is set by /admin/api/login on success.
 	AdminSessionCookie = "amb-rc-admin-session"
 	// adminLoginPath is where the auth middleware sends unauthenticated
-	// browsers (HTML requests). The SPA owns this route — Go just redirects.
-	adminLoginPath = "/admin/login"
+	// browsers (HTML requests). The SPA owns the login UI under HashRouter
+	// (Issue #84), so we redirect to the in-page anchor rather than the
+	// raw /admin/login path which Go would 404 (only / is served by the
+	// embedded static handler).
+	adminLoginPath = "/#/admin/login"
 
 	// passphraseBytes is the raw entropy size; the hex-encoded form is 2×.
 	// 16 raw bytes = 128 bits, hex = 32 chars. Plenty for an interactive

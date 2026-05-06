@@ -164,22 +164,26 @@ func TestStatic_PathTraversal_Rejected(t *testing.T) {
 	}
 }
 
-func TestAdmin_Authenticated_ReturnsStub(t *testing.T) {
+func TestAdmin_Authenticated_RedirectsToHashRoute(t *testing.T) {
 	h := hub.New(zap.NewNop(), 10, 4)
 	defer h.Close()
 	ts := newTestServer(t, h)
-	client := adminLogin(t, ts)
+	// Manual redirect handling so we can inspect the 303.
+	jar := adminLogin(t, ts).Jar
+	client := &http.Client{
+		Jar:           jar,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 	resp, err := client.Get(ts.URL + "/admin")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		t.Fatalf("status: got %d want 200", resp.StatusCode)
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("status: got %d want 303", resp.StatusCode)
 	}
-	body, _ := io.ReadAll(resp.Body)
-	if !bytes.Contains(body, []byte("Admin")) {
-		t.Errorf("body should mention 'Admin'; got: %s", body)
+	if loc := resp.Header.Get("Location"); loc != "/#/admin" {
+		t.Errorf("location: got %q want %q", loc, "/#/admin")
 	}
 }
 

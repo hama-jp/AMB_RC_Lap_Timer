@@ -31,6 +31,9 @@ export function Layout({ wsClient, children }: LayoutProps): JSX.Element {
           <a className="text-cyan-300 underline-offset-4 hover:underline" href="#/settings">
             Settings
           </a>
+          <a className="text-cyan-300 underline-offset-4 hover:underline" href="#/admin">
+            Admin
+          </a>
         </nav>
       </header>
       <StatusBanner wsClient={wsClient} />
