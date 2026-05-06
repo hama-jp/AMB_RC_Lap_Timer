@@ -102,7 +102,8 @@
 | `/`        | GET      | SPA 配信(`index.html` ほか static) |
 | `/assets/*`| GET      | SPA の静的アセット |
 | `/ws`      | WS       | デコーダーから受信した素のバイト列を fan-out。**JSON 化はしない**(byte pipe) |
-| `/admin`   | GET      | **#3 ではスタブ**(プレースホルダー HTML を返す)。本実装(設定編集 WebUI、`config.json` 反映 + 反映通知)は #8 |
+| `/admin`   | GET      | 設定編集 WebUI のエントリ。**#3 では認証なしのスタブ**、本実装(認証 + フォーム + 監査ログ)は #8。設計詳細は §3.5.4–§3.5.8 |
+| `/admin/api/config` | GET / POST | `/admin` のバックエンド。GET は現在値、POST は更新(バリデーション通過時のみ atomic rename)。詳細 §3.5.6 |
 | `/healthz` | GET      | `{"upstream":"connected","clients":2,"uptime_sec":1234,"version":"<v>"}` 形式の JSON。`upstream` は `connecting`/`connected`/`mock`/`replay`/`finished` のいずれか |
 | `/logs`    | GET      | 直近の log を ndjson もしくはプレーンで返す(認証なし、LAN 専用前提) |
 
@@ -222,6 +223,56 @@ amb-rc:state:lap.collapsed        → ラップ表示の折り畳み状態(boole
 ```
 
 **`amb-rc:setting:*` は永続的な設定**、**`amb-rc:state:*` はセッション復元用の一時状態**として区別する(後者は将来 `sessionStorage` 移行も検討可)。スキーマの正式版は SPA 骨格 PR で確定する。
+
+#### 3.5.4 `/admin` の認証モデル
+
+`/admin` は LAN 専用前提だが、無認証は採用しない。**起動ごとに使い捨ての passphrase**(以下 *one-time passphrase*)で守る。
+
+- **発行**: ゲートウェイ起動時に乱数で生成(32 hex chars 程度)。`logs/gateway.log` の最初と標準出力にちょうど 1 回だけ出力する。
+- **入力**: `/admin` への初回アクセス時に passphrase を求める。検証成功後、ブラウザに **`HttpOnly` / `SameSite=Strict` / `Secure=false`(LAN HTTP 前提) / セッション cookie** を発行(プロセスメモリで管理、再起動で全失効)。
+- **失効**: ゲートウェイ EXE 再起動で passphrase ごと変わる。長期運用での秘密管理は不要。
+- **`config.json` への保存**: `admin` セクションは作らない(passphrase は揮発)。`logs/admin-audit.log` の出力先など監査ログ周りの設定だけ将来必要なら別途検討。
+
+理由: ロードマップ #8 / Field Test β / リリース v0.1 まで「LAN 専用 + 個人練習用途」が変わらず、恒久パスワードの管理や HTTPS 化は overkill。一方、無認証だと「ブラウザを開きっぱなしにしたまま離席」のリスクが残る。one-time passphrase は EXE のコンソールを見ている操作員に自然な導線で、再起動で自動失効するため後始末も発生しない。
+
+#### 3.5.5 編集対象範囲と反映タイミング
+
+`config.json` の **`admin` セクション以外すべて編集可**。各項目には UI で反映タイミングのラベルを付ける。
+
+| 項目 | 反映タイミング | 備考 |
+|---|---|---|
+| `upstream.host` / `upstream.port` | 即時(既存接続を Close → 再接続) | `real.Source` の reconnect ロジック流用 |
+| `upstream.reconnect.*` | 次回再接続から | 既に確立済みの session には影響しない |
+| `replay.speed` | 次回 `--replay` 起動から | 現セッションには影響しない |
+| `records.dir` | 次回 `--record` 起動から | 既存 record session には影響しない |
+| `server.max_clients` / `server.client_buffer_len` | 新規クライアントから | 既存 WS クライアントは据え置き |
+| `logging.dir` / `logging.max_size_mb` / `logging.max_backups` | 再起動必要 | lumberjack のローテーション設定変更 |
+| `listen` | 再起動必要 | HTTP サーバの bind は不可逆 |
+
+**`admin` セクションは編集不可**(ブートストラップ専用、§3.5.4 参照)。再起動が必要な項目を保存した直後は UI に「変更内容は再起動後に有効になります」のバナーを表示する。
+
+#### 3.5.6 書き戻し / バリデーション / 監査
+
+- **API**: `GET /admin/api/config` で現在値、`POST /admin/api/config` で更新を受ける。要求は完全な `config.json` の JSON、レスポンスは適用後の値 + どの項目が即時 / 再起動待ちかの内訳。
+- **バリデーション**: 必須フィールド / 型 / 範囲 / enum をサーバ側で網羅的にチェック。失敗時は **HTTP 400 + `{ "errors": [{ "path": "...", "message": "..." }, ...] }`** を返し、UI 側で項目別ハイライト。
+- **アトミック書き込み**: `config.json.tmp.<timestamp>` に書いて `os.Rename` で差し替え。FAT32 上でも原子的に切り替わる(本書 §4.4.4)。
+- **競合**: 楽観ロック / 排他は本フェーズでは入れない(LAN 内・1 操作員前提)。
+- **監査ログ**: 書き込み成功時に **`logs/admin-audit.log`** に 1 行 append。フォーマットは `<RFC3339> <client-ip> changed <count> field(s): <path1>=<old>→<new>, ...`(値が長いものは省略)。`logging.dir` 配下に置き、ローテーションは `gateway.log` と分離(同じ lumberjack writer を別ファイル名で開く)。
+
+#### 3.5.7 `/admin` の UI 構成
+
+- **SPA の独立ルート**: ラップタイマー画面 (`/`) とは分離。React Router を導入する。導入コストは小さく、設定/ラップが両方とも単純な hooks ベースで済む。
+- **ナビゲーション**: ラップ画面のヘッダから「設定 (admin)」リンクを置く。ただし one-time passphrase 入力後でないとフォームに到達しない。
+- **画面構成**: カテゴリ別アコーディオン(Upstream / Server / Logging / Recording / Replay)。各項目は label / 現在値 / 入力欄 / 反映タイミングラベル / バリデーションエラー表示。
+- **保存 UX**: 画面下部に固定の「保存」ボタン、クリックで POST → 成功時にトースト「保存しました(N 項目変更)」+ 再起動必要バナーが必要なら表示。
+- **戻すボタン**: 「初期値に戻す」(`config.example.json` の値で全項目リセット、保存はせず編集中バッファのみ更新)。
+- **クライアント設定の表示**: `/admin` に `localStorage` 系の項目は **一切表示しない**(§3.5.2)。ヘッダにユーザー向け「個人設定」リンクで `/settings`(SPA 内 client-side route)へ案内のみ。
+
+#### 3.5.8 テスト方針
+
+- **Go ユニット**: バリデーション(必須 / 型 / 範囲 / enum / 不正 JSON)、atomic rename、監査ログフォーマット、認証ミドルウェア(passphrase 不一致 / 期限切れ cookie / passphrase ローテーション)。
+- **Web ユニット**: フォーム部品の値往復、エラーハイライト、反映タイミングバナーの表示条件。
+- **手動 E2E**: Field Test β の前後で 1 回(チェックリスト化)。LAN 専用 / 1 操作員前提なので Playwright 等は導入しない。
 
 ---
 
@@ -457,6 +508,7 @@ go run ./cmd/gateway --mock --listen :8080
 ---
 
 ## 10. 改訂履歴
+- v0.1.9 (2026-05-06): §3.5 に `/admin` 実装方針を確定(§3.5.4 認証 / §3.5.5 編集範囲と反映タイミング / §3.5.6 書き戻しと監査 / §3.5.7 UI / §3.5.8 テスト)。`/admin` は使い捨て passphrase + HttpOnly セッション cookie で守る、`admin` セクションは編集不可、書き込みは temp + atomic rename + `logs/admin-audit.log`。§3.1 エンドポイント表に `/admin/api/config` を追加。実装フェーズ #8 / Issue #79 で確定。
 - v0.1.8 (2026-05-06): 音声読み上げ #6 / #67 の完了に合わせ、Web Speech API による Lap 秒発話と iOS Safari 向けユーザー操作 unlock を SPA に追加。
 - v0.1.7 (2026-05-06): ラップ計算 #5 / #65 の完了に合わせ、SPA の PASSING 表示に連続 PASSING の `RTC_TIME` 差分から算出する Lap 秒列を追加。
 - v0.1.6 (2026-05-06): SPA 骨格 #4-E / #59 の完了に合わせ、Web 側で WS 受信、クライアント設定、状態バナー、PASSING フィルタリスト、`/healthz` version 表示まで結合済みとする。
