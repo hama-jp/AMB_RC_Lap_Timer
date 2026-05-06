@@ -16,7 +16,6 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -41,8 +40,13 @@ type event struct {
 	FrameIndex  int64
 	Bytes       int
 	MsSincePrev int64
-	Event       string // "frame" | "connect" | "disconnect" | "error"
-	Note        string
+	// Event values: "frame", "connect", "disconnect", "shutdown".
+	// "shutdown" is written exactly once when ctx is cancelled (signal or
+	// --duration-sec). Harness disconnect counters should subtract or
+	// filter on Event="shutdown" so a clean exit is not booked as a drop
+	// (Issue #70 review notes).
+	Event string
+	Note  string
 }
 
 func main() {
@@ -50,14 +54,16 @@ func main() {
 		url           string
 		outPath       string
 		format        string
+		rawOutPath    string
 		durationSec   int
 		reconnectInit int
 		reconnectMax  int
 		quiet         bool
 	)
 	flag.StringVar(&url, "url", "ws://localhost:8080/ws", "WebSocket URL to connect to")
-	flag.StringVar(&outPath, "out", "recorder.csv", "output file path")
-	flag.StringVar(&format, "format", "csv", "output format: csv | jsonl")
+	flag.StringVar(&outPath, "out", "recorder.csv", "stats output file path")
+	flag.StringVar(&format, "format", "csv", "stats output format: csv | jsonl")
+	flag.StringVar(&rawOutPath, "raw-out", "", "if set, append every received WS payload byte-for-byte to this file (for replay round-trip checks)")
 	flag.IntVar(&durationSec, "duration-sec", 0, "exit after N seconds (0 = run until SIGINT)")
 	flag.IntVar(&reconnectInit, "reconnect-initial-ms", 500, "initial reconnect delay in ms")
 	flag.IntVar(&reconnectMax, "reconnect-max-ms", 30000, "max reconnect delay in ms")
@@ -70,15 +76,26 @@ func main() {
 	}
 	defer w.Close()
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	var rawOut *os.File
+	if rawOutPath != "" {
+		rawOut, err = os.Create(rawOutPath)
+		if err != nil {
+			log.Fatalf("open raw-out: %v", err)
+		}
+		defer rawOut.Close()
+	}
+
+	signalCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	ctx := signalCtx
 	if durationSec > 0 {
 		dctx, dcancel := context.WithTimeout(ctx, time.Duration(durationSec)*time.Second)
 		defer dcancel()
 		ctx = dctx
 	}
 
-	log.Printf("recorder url=%s out=%s format=%s duration=%ds", url, outPath, format, durationSec)
+	log.Printf("recorder url=%s out=%s format=%s raw-out=%q duration=%ds",
+		url, outPath, format, rawOutPath, durationSec)
 
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	var (
@@ -94,8 +111,14 @@ func main() {
 			break
 		}
 		framesBefore := atomic.LoadInt64(&totalFrames)
-		err := runOnce(ctx, url, w, &totalBytes, &totalFrames, quiet)
-		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		err := runOnce(ctx, url, w, rawOut, &totalBytes, &totalFrames, quiet)
+		// Only book a disconnect when ctx is still alive: nhooyr.io/websocket
+		// races between ctx cancellation and conn.Close internally, so on
+		// shutdown the Read can return either ctx.Err() OR
+		// "use of closed network connection". Both are clean exits when ctx
+		// has been cancelled, and the harness has no way to tell them apart
+		// from a genuine drop without this gate.
+		if err != nil && ctx.Err() == nil {
 			atomic.AddInt64(&disconnects, 1)
 			_ = w.WriteEvent(event{Time: time.Now(), Event: "disconnect", Note: err.Error()})
 			log.Printf("disconnect: %v", err)
@@ -130,15 +153,28 @@ func main() {
 		attempt++
 	}
 
+	// Distinguish shutdown reason so a long Soak that hits its timeout looks
+	// the same to the harness as a Ctrl-C: both are clean exits, neither
+	// should be booked as a disconnect.
+	reason := "ctx done"
+	switch {
+	case signalCtx.Err() != nil:
+		reason = "signal"
+	case ctx.Err() == context.DeadlineExceeded:
+		reason = "duration elapsed"
+	}
+	_ = w.WriteEvent(event{Time: time.Now(), Event: "shutdown", Note: reason})
+
 	elapsed := time.Since(start)
-	log.Printf("summary: runtime=%s frames=%d bytes=%d disconnects=%d",
+	log.Printf("summary: runtime=%s frames=%d bytes=%d disconnects=%d shutdown=%s",
 		elapsed.Round(time.Millisecond),
 		atomic.LoadInt64(&totalFrames),
 		atomic.LoadInt64(&totalBytes),
-		atomic.LoadInt64(&disconnects))
+		atomic.LoadInt64(&disconnects),
+		reason)
 }
 
-func runOnce(ctx context.Context, url string, w recordWriter, totalBytes, totalFrames *int64, quiet bool) error {
+func runOnce(ctx context.Context, url string, w recordWriter, rawOut *os.File, totalBytes, totalFrames *int64, quiet bool) error {
 	dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	conn, _, err := websocket.Dial(dialCtx, url, nil)
 	cancel()
@@ -146,6 +182,9 @@ func runOnce(ctx context.Context, url string, w recordWriter, totalBytes, totalF
 		return fmt.Errorf("dial: %w", err)
 	}
 	conn.SetReadLimit(1 << 20) // 1 MiB; gateway emits small frames
+	// Always close with NormalClosure. nhooyr's Close() blocks on the close
+	// handshake, so on a deadline-cancelled ctx we still want to send a
+	// proper close frame to keep the gateway's per-client logs clean.
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
 	if err := w.WriteEvent(event{Time: time.Now(), Event: "connect", Note: url}); err != nil {
@@ -167,6 +206,11 @@ func runOnce(ctx context.Context, url string, w recordWriter, totalBytes, totalF
 		prev = now
 		idx := atomic.AddInt64(totalFrames, 1)
 		atomic.AddInt64(totalBytes, int64(len(data)))
+		if rawOut != nil {
+			if _, werr := rawOut.Write(data); werr != nil {
+				return fmt.Errorf("raw-out write: %w", werr)
+			}
+		}
 		ev := event{
 			Time:        now,
 			FrameIndex:  idx,
