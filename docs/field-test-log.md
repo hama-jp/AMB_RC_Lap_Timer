@@ -2,7 +2,7 @@
 
 `docs/test-strategy.md` §6 で定義した Field Test(実 LAN ✕ 実機なし)の **実施記録**を残す場所。CI で自動化しないため、ここに書いておかないと「現地で何が起きたか」が後から辿れなくなる。
 
-> Status: **Draft v0.1.4**(β-1 自宅 dry-run 本番完了 / β-2 ブロッカー Issue #101 を発見)
+> Status: **Draft v0.1.5**(β-1 残課題のうち #98 / #101 を実機再検証で ✅ 確認、β-2 ブロッカー解消)
 
 ---
 
@@ -101,6 +101,50 @@
 ## 3. 実施履歴
 
 > ここから下に実施セッションを **新しいものほど上**(逆時系列)で追記していく。
+
+## 2026-05-07 β-1 修正検証 — B-2 / B-7 / B-8 を PR #103 / #105 マージ後に再実施
+
+β-1 本番(下記)で発見した派生 Issue のうち **#98**(Speech 発話崩壊)と **#101**(USB 移植性破綻)が PR #103 / #105 で修正されたので、該当の B-2 / B-7 / B-8 を再実施。同 PC・同 iPhone・同 USB を使用した条件で再検証し、すべて ✅ で合格。本セッションは β-1 本番(同日先行)の補完であり、新規シナリオは追加していない。
+
+### 環境
+- ゲートウェイ: `dev-5c95882`(commit `5c95882`、PR #103 / #104 / #105 マージ後の main で `scripts\build.ps1` 出力)
+- ホスト PC: Windows 11 Home, build 10.0.26200.8246(本番セッションと同一)
+- クライアント: iPhone Safari(Wi-Fi)、Windows Chrome(Ethernet)
+- ネットワーク: 自宅 WiFi(同前)
+- 実施者: 操作員(iPhone 実機)+ Windows Claude Code エージェント(伴走)
+
+### 再検証シナリオと結果
+| シナリオ | 前回(本番) | 今回(再検証) | メモ |
+|---|---|---|---|
+| B-2 iOS Safari Speech | ⚠ 「いちまんきゅうせん…」 | ✅ | PR #103 で `formatLapTimeForSpeech` 追加。「**じゅうきゅうびょうよんじゅうきゅう**」と期待どおり発話 |
+| B-7 USB 起動 | ❌ logs が C: を指す | ✅ | PR #105 で `/admin/api/config` を Raw / Resolved 分離。USB 起動ログに `"logs": "F:\\AMB_RC_Lap_Timer\\logs"` / `"records": "F:\\AMB_RC_Lap_Timer\\records"`(C: 漏れなし) |
+| B-8 USB 抜き挿し | ⚠ #101 連鎖で fail-soft 検証不可 | ✅ | 抜去時に `write error: ... no longer valid.` の **fail-soft 警告を console に出力**、process は継続、Ctrl+C で正常終了。`docs/architecture.md` §4.4.3 仕様どおり。再挿入時の自動復旧は仕様上保証なし(handle は dead のまま)で挙動一致 |
+
+### 観察
+- **B-7 ログ抜粋**(USB 起動時):
+  ```
+  baseDir=F:\AMB_RC_Lap_Timer
+  config=F:\AMB_RC_Lap_Timer\config.json
+  logs=F:\AMB_RC_Lap_Timer\logs        ← 前回は C:
+  records=F:\AMB_RC_Lap_Timer\records  ← 前回は C:
+  ```
+  PR #105(Raw / Resolved 分離)が **実機 USB 起動でも期待どおり動作**。
+- **B-8 fail-soft 警告**:
+  ```
+  write error: write F:\AMB_RC_Lap_Timer\logs\gateway.log:
+  The volume for a file has been externally altered so that the opened file is no longer valid.
+  ```
+  zap/lumberjack の internal error sink が stderr に吐き、プロセスは continued。シャットダウン時にもう 1 度同じ警告が出るのは「ハンドル dead で再挿入で自動復旧しない」という設計上の許容範囲(architecture.md §4.4.3 明記)。
+- **修正前の汚染 config.json** が USB に残っていたため、本セッションでは clean dist で上書きしてから USB 起動した。架構上の「過去の汚染済み config.json の自動 self-heal」は Issue #101 のスコープ外で、operator が手で直す前提どおり。
+- B-2 の音声検証は B-7 セットアップ中に副次的に確認できる位置で、**iPhone Safari + Windows Chrome 両方で同じ新フォーマット発話**(.\` を読まず「N秒MM」)が再現。
+
+### 残る派生 Issue
+- **#100** [fix(web): iPhone Safari Sleep/Wake 後に LapList が "待機中" のまま固まる](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/100) — 未着手、β-2 までに修正したい
+- **#99** [docs(packaging): Defender Firewall ダイアログが出ないケースの復旧手順を追加](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/99) — PR #104 で対応済み(本セッションで該当復旧手順を実機適用、機能した)
+
+### 自動収集ログ
+- 本セッションのゲートウェイログ: PC 側 `dist\AMB_RC_Lap_Timer\logs\gateway.log` および USB 側 `F:\AMB_RC_Lap_Timer\logs\gateway.log`(両方に書かれた = #101 修正の副次証跡)
+- 実施者ローカルの観察メモ(コミットしない)
 
 ## 2026-05-07 β-1 自宅 dry-run 本番 (Win 11 build 26200.8246 / iPhone Safari + Win Chrome / 自宅 WiFi)
 
@@ -235,6 +279,7 @@ PR #95 で定義した β-1 9 シナリオの本番セッション。Soak 1h は
 ---
 
 ## 4. 改訂履歴
+- v0.1.5 (2026-05-07): §3 に β-1 修正検証セッションを追記。PR #103(#98 Speech)と PR #105(#101 USB)マージ後に B-2 / B-7 / B-8 を実機再実施し、**3 件すべて ✅** で β-2 ブロッカー解消。残課題は #100(Sleep/Wake)のみ。
 - v0.1.4 (2026-05-07): §3 に β-1 自宅 dry-run 本番セッション(残 8 シナリオ)を追記。✅ 4 件 / ⚠ 3 件 / ❌ 1 件、派生 Issue #98 / #99 / #100 / #101 を起票。**β-2 現地までに #100 と #101 を修正**(後者は USB 配布の正当性に直結)。
 - v0.1.3 (2026-05-07): §3 に β-1 自宅 dry-run の Soak 1h 先行検証を追記。Soak 単独で +4.8% / +0.2% / 0 disconnects と green、β-1 本番(残り 8 シナリオ)に進む根拠を残す。
 - v0.1.2 (2026-05-06): §2.1 に β-1 自宅 dry-run 専用テンプレートを追加。`docs/test-strategy.md` §6.3 の β-1 / β-2 分割に対応。シナリオ 9 件を固定し、AMB 実機なしで完結するセッション用に整える。
