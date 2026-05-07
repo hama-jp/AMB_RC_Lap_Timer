@@ -1,6 +1,13 @@
 import { useState, type FormEvent } from 'react';
 
-import { loadSettings, parseTransponderInput, saveSettings } from './settingsStore';
+import { RecentTransponders } from './RecentTransponders';
+import {
+  addRecentTransponder,
+  loadRecentTransponders,
+  loadSettings,
+  parseTransponderInput,
+  saveSettings,
+} from './settingsStore';
 
 export function SettingsPage(): JSX.Element {
   const [initialSettings] = useState(() => loadSettings());
@@ -10,6 +17,7 @@ export function SettingsPage(): JSX.Element {
   const [speechEnabled, setSpeechEnabled] = useState(initialSettings.speechEnabled);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [recents, setRecents] = useState<readonly number[]>(() => loadRecentTransponders());
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
@@ -25,6 +33,10 @@ export function SettingsPage(): JSX.Element {
       transponder: parsedTransponder.value,
       speechEnabled,
     });
+    if (parsedTransponder.value !== null) {
+      addRecentTransponder(parsedTransponder.value);
+      setRecents(loadRecentTransponders());
+    }
     setTransponderInput(parsedTransponder.normalized);
     setError(null);
     setSaved(true);
@@ -60,6 +72,16 @@ export function SettingsPage(): JSX.Element {
             空欄の場合は未設定です。0〜0xFFFFFFFF の10進数または16進数を指定できます。
           </span>
         </label>
+
+        <RecentTransponders
+          onChange={setRecents}
+          onPick={(decimal) => {
+            setTransponderInput(decimal);
+            setSaved(false);
+            setError(null);
+          }}
+          values={recents}
+        />
 
         <label className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950/70 px-4 py-3 text-sm font-medium text-slate-200">
           <input
