@@ -2,7 +2,7 @@
 
 `docs/test-strategy.md` §6 で定義した Field Test(実 LAN ✕ 実機なし)の **実施記録**を残す場所。CI で自動化しないため、ここに書いておかないと「現地で何が起きたか」が後から辿れなくなる。
 
-> Status: **Draft v0.1.7**(β-1 完了、β-2 現地用テンプレート追加)
+> Status: **Draft v0.1.8**(β-1 完了、β-2 現地用テンプレート、`v0.1.0-rc1` release dry-run 通過)
 
 ---
 
@@ -137,6 +137,41 @@
 ## 3. 実施履歴
 
 > ここから下に実施セッションを **新しいものほど上**(逆時系列)で追記していく。
+
+## 2026-05-08 release dry-run — `v0.1.0-rc1`(USB 配布物の実機展開検証)
+
+PR #114(release.yml + #113 §完了条件)で導入したリリース自動化の **Day 4-5 タスク**「実機 PC で展開 → mock 起動 → スマホで PASSING 受信」を実施。`git tag v0.1.0-rc1` push で生成された GitHub Releases ページからダウンロードした正規 ZIP を使い、operator の現地手順をシミュレートした。
+
+### 環境
+- ゲートウェイ: `v0.1.0-rc1`(GitHub Releases 配布の `AMB_RC_Lap_Timer-v0.1.0-rc1.zip`、SHA-256 一致を確認)
+- ホスト PC: Windows 11 Home, build 10.0.26200.8246
+- USB: F:\AMB_RC_Lap_Timer\(リリース ZIP を Expand-Archive で展開)
+- クライアント: iPhone Safari(自宅 WiFi)
+- 実施者: 操作員 + Windows Claude Code エージェント(伴走)
+
+### 実施結果
+| ステップ | 結果 | メモ |
+|---|---|---|
+| GitHub Releases から ZIP / SHA-256 ダウンロード | ✅ | SHA-256 ローカル再計算で完全一致 |
+| F:\\AMB_RC_Lap_Timer\\ に展開 | ✅ | `gateway.exe` 6.53 MB / `config.example.json` / `README.txt` の 3 点 |
+| `gateway.exe --mock --listen :8081` 起動 | ✅ | startup ログで `version=v0.1.0-rc1`、`baseDir/logs/records` がすべて F: 解決(PR #105 fix が rc1 で維持されている証跡) |
+| iPhone Safari `http://192.168.11.3:8081/` 接続 | ⚠ → ✅ | **初回 Firewall ブロック**、F: パス用に `New-NetFirewallRule -Program 'F:\\...\\gateway.exe' ...` を admin PS で 1 行追加して復旧。以降 PASSING 受信・lap 表示・発話すべて動作 |
+
+### 観察
+- **昨日 β-1 retest で C: 用に追加していたルールでは F: パスを通せなかった**(Windows Defender Firewall は `Program` を絶対パスマッチで判定)。USB を別 PC に持ち込むと操作員ごとにルール追加が必要、という運用知見を確定。
+- **`packaging/README.txt` の起動手順を本セッションの docs PR で更新**: Firewall ルール追加を「うまくいかないとき」セクションから **§3 標準起動手順の 1 ステップに昇格**。Public プロファイル + ダイアログが出ない PC が標準ケースだと判明したのが理由。
+- リリースアーティファクトそのもの(SHA-256 一致 ZIP)は **想定どおり** で、`release.yml` の bundle / cross-compile / packaging すべて期待挙動。
+- `--listen :8081` は C:\\ の旧テストとの port 衝突回避のため。実運用は `--listen :8080`(README.txt 既定)。
+
+### Issue #113 §完了条件
+- ✅ `.github/workflows/release.yml` がマージ済み(PR #114)
+- ✅ `git tag v0.1.0-rc1` でテストリリース成功(GitHub Release ページ + ZIP + SHA-256)
+- ✅ **本セッションで実機展開 → mock 起動 → スマホで PASSING 受信**
+- ✅ docs 2 件作成(`docs/release.md` / `development-workflow §6`)
+
+### 次のステップ
+- **β-2 当日**(現地で AMB 実機疎通)→ 通過したら `git tag v0.1.0` で正式リリース
+- 万が一 hotfix が必要なら `v0.1.0-rc2` で再 dry-run
 
 ## 2026-05-07 β-1 修正検証 — B-4 を PR #108 マージ後に再実施
 
@@ -349,6 +384,7 @@ PR #95 で定義した β-1 9 シナリオの本番セッション。Soak 1h は
 ---
 
 ## 4. 改訂履歴
+- v0.1.8 (2026-05-08): §3 に `v0.1.0-rc1` release dry-run を追記。GitHub Releases から ZIP をダウンロード → USB 展開 → mock 起動 → iPhone で PASSING 受信を確認、Issue #113 §完了条件 3 を ✅。Firewall ルール追加が **PC ごとに必須**だと現地知見で確定し、`packaging/README.txt` の標準起動手順に昇格(同 PR で対応)。
 - v0.1.7 (2026-05-07): §2.2 β-2 現地専用テンプレート(AMB 疎通のみ)を追加。当日操作員のチェックリストは `docs/field-test-checklist-beta2.md` に分離(印刷可、テンプレと運用を分ける)。
 - v0.1.6 (2026-05-07): §3 に β-1 修正検証(B-4)セッションを追記。PR #108(#100 Sleep/Wake)マージ後に B-4 を実機再実施し ✅ 自動復帰を確認。**β-1 自宅 dry-run の全 9 シナリオが ✅** となり、β-2 現地に進める状態。
 - v0.1.5 (2026-05-07): §3 に β-1 修正検証セッションを追記。PR #103(#98 Speech)と PR #105(#101 USB)マージ後に B-2 / B-7 / B-8 を実機再実施し、**3 件すべて ✅** で β-2 ブロッカー解消。残課題は #100(Sleep/Wake)のみ。

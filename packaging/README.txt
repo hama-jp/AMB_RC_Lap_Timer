@@ -27,24 +27,50 @@ AMB P3 デコーダーに対応した、個人練習用のラップタイマー 
          "port": 5403
        }
 
-3. gateway.exe をダブルクリックします。
-   - 初回は Microsoft Defender SmartScreen の警告が出ます。
-       「詳細情報」 → 「実行」 を押してください。
-   - 続いて Windows Defender Firewall の許可ダイアログが出ます。
-       「プライベートネットワーク」だけにチェックを入れて「アクセスを許可する」。
+3. 初回だけ、Windows Defender Firewall に gateway.exe の通信を許可します。
+   PC のネットワークが「パブリック」プロファイルだとダイアログが出ずに
+   無言でブロックされるため、PowerShell から先に許可ルールを足しておく
+   方法が確実です。
 
-4. 黒いウィンドウ(コンソール)が開いたら、ログに次のような行が出るのを
+   スタート右クリック → 「ターミナル(管理者)」または
+   「PowerShell(管理者)」を起動し、下の 1 行を実行(-Program のパスは
+   自分の gateway.exe の場所に書き換える):
+
+       New-NetFirewallRule -DisplayName 'AMB RC Lap Timer (gateway.exe)' `
+           -Direction Inbound -Action Allow -Profile Any `
+           -Program 'F:\AMB_RC_Lap_Timer\gateway.exe' -Protocol TCP
+
+   - USB から起動する場合のパス例: F:\AMB_RC_Lap_Timer\gateway.exe
+   - デスクトップに置いた場合のパス例:
+     C:\Users\<ユーザ名>\Desktop\AMB_RC_Lap_Timer\gateway.exe
+   - 別の PC に持ち込んだら、その PC で 1 回だけ再実行が必要です
+     (ドライブレターやフォルダが変わるため)。
+   - 同名ルールが既にあるとエラーになりますが無害です。
+   - 後で削除したいとき:
+       Remove-NetFirewallRule -DisplayName 'AMB RC Lap Timer (gateway.exe)'
+
+   別パターン: PC のネットワークが「プライベート」の場合、初回起動時に
+   Defender Firewall ダイアログが自動で出ます。その場合は
+   「プライベートネットワーク」にチェックを入れて「アクセスを許可する」
+   を押せば、上の PowerShell コマンドは不要です。
+
+4. gateway.exe をダブルクリックして起動します。
+   初回だけ Microsoft Defender SmartScreen の警告が出ます:
+       「詳細情報」 → 「実行」 を押してください。
+   2 回目以降は警告は出ません。
+
+5. 黒いウィンドウ(コンソール)が開いたら、ログに次のような行が出るのを
    待ちます:
        INFO  source: real (TCP)  addr=192.168.1.21:5403
        INFO  upstream connected  addr=192.168.1.21:5403
        INFO  http server listening  addr=:8080
 
-5. スマホ / タブレットのブラウザで、ゲートウェイ PC の IP を開きます:
+6. スマホ / タブレットのブラウザで、ゲートウェイ PC の IP を開きます:
        http://<このPCのIP>:8080/
    PC の IP がわからないときは、同じ黒いウィンドウのログから探すか、
    コマンドプロンプトで ipconfig を実行して IPv4 アドレスを確認します。
 
-6. ブラウザで「設定」を開き、自分のトランスポンダー番号を入れて保存します。
+7. ブラウザで「設定」を開き、自分のトランスポンダー番号を入れて保存します。
    読み上げを使う場合は、表示されるロックボタン(🔊)を一度タップして
    音声を有効化してください(iPhone Safari の仕様で、初回タップが必須です)。
 
@@ -74,35 +100,11 @@ AMB P3 デコーダーに対応した、個人練習用のラップタイマー 
 ▸ スマホからブラウザで開けない
   - URL は「http://<このPCのIP>:8080/」 ですか?
   - スマホとゲートウェイ PC が同じ WiFi につながっていますか?
-  - 起動時の Defender Firewall ダイアログが「許可」になっていますか?
-    ダイアログが出なかった or 間違って「キャンセル」した場合は下の復旧手順
-    を試してください。
-
-▸ Defender Firewall ダイアログが出なかった/間違って閉じてしまった
-  ネットワークが「パブリック」プロファイルだとダイアログが出ずに無言で
-  ブロックされることがあります。順に試してください。
-
-  1. ネットワークを「プライベート」に変更
-       設定 → ネットワークとインターネット → そのネットワーク
-        → ネットワーク プロファイルの種類 → プライベート
-     これだけで通る場合があります(失敗時は 2 へ)。
-
-  2. 管理者 PowerShell から手動でルールを追加
-     スタート右クリック → 「ターミナル(管理者)」または
-     「PowerShell(管理者)」を起動し、下の 1 行を実行:
-
-       New-NetFirewallRule -DisplayName 'AMB RC Lap Timer (gateway.exe)' `
-         -Direction Inbound -Action Allow -Profile Any `
-         -Program 'C:\path\to\AMB_RC_Lap_Timer\gateway.exe' -Protocol TCP
-
-     ※ -Program のパスは、自分の gateway.exe の実際の場所に書き換えて
-        ください。USB から起動している場合は USB 上のパス
-        (例: F:\AMB_RC_Lap_Timer\gateway.exe)になります。
-     ※ 同名ルールが既にある場合はエラーになりますが無害です。
-     ※ ルールを後で取り消したい場合は次の 1 行で削除できます:
-        Remove-NetFirewallRule -DisplayName 'AMB RC Lap Timer (gateway.exe)'
-
-  3. もう一度 gateway.exe を起動 → スマホで http://<PC IP>:8080/ を再試行
+  - 起動手順 §3 の Firewall 許可ルールを追加しましたか?
+    パブリックネットワークではダイアログが出ずに無言でブロックされる
+    ため、ルールを足さないとスマホから接続できません。
+  - 別の PC にコピーした場合、新しい PC で §3 を再実行する必要があります
+    (ドライブレターやフォルダが変わるため、既存ルールは効きません)。
 
 ▸ 音声が鳴らない
   - 設定画面で「読み上げを有効にする」がオンになっていますか?
