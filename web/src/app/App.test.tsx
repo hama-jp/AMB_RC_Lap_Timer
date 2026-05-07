@@ -139,7 +139,8 @@ describe('App integration', () => {
       );
     });
 
-    expect(speechController.speak).toHaveBeenCalledWith('21.789秒');
+    // Issue #98: ja-JP TTS reads "21秒7 9" digit-by-digit (ASCII space).
+    expect(speechController.speak).toHaveBeenCalledWith('21秒7 9');
   });
 });
 

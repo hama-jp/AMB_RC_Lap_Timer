@@ -82,7 +82,9 @@ describe('SpeechCoordinator', () => {
       store.emit({ targetTransponder: 1, passings: [entry(21_789_000n)], bestLapUs: null });
     });
 
-    expect(controller.speak).toHaveBeenCalledWith('21.789秒');
+    // Issue #98: ja-JP TTS reads the trailing 2 digits digit-by-digit
+    // when separated by an ASCII space ("21秒7 9" → 「にじゅういち びょう なな きゅう」).
+    expect(controller.speak).toHaveBeenCalledWith('21秒7 9');
   });
 
   it('does not speak the first passing without a lap time', () => {
