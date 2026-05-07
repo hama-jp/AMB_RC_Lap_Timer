@@ -2,7 +2,7 @@
 
 `docs/test-strategy.md` §6 で定義した Field Test(実 LAN ✕ 実機なし)の **実施記録**を残す場所。CI で自動化しないため、ここに書いておかないと「現地で何が起きたか」が後から辿れなくなる。
 
-> Status: **Draft v0.1.3**(α-1 完了 / β-1 dry-run の Soak 1h を先行検証)
+> Status: **Draft v0.1.4**(β-1 自宅 dry-run 本番完了 / β-2 ブロッカー Issue #101 を発見)
 
 ---
 
@@ -102,6 +102,59 @@
 
 > ここから下に実施セッションを **新しいものほど上**(逆時系列)で追記していく。
 
+## 2026-05-07 β-1 自宅 dry-run 本番 (Win 11 build 26200.8246 / iPhone Safari + Win Chrome / 自宅 WiFi)
+
+PR #95 で定義した β-1 9 シナリオの本番セッション。Soak 1h は PR #96 で先行済みのため、本セッションでは残 8 シナリオを順番に実施した。Windows エージェント(伴走)が PC 側のゲートウェイ起動・USB へのコピー・派生 Issue 起票を担当し、操作員(ユーザ)が iPhone Safari + Windows Chrome で各シナリオを実機操作する役割分担。
+
+### 環境
+- ゲートウェイ: `dev-bf09187`(commit `bf09187`、`scripts\build.ps1` 出力)
+- ホスト PC: Windows 11 Home, build 10.0.26200.8246
+- クライアント: iPhone Safari + Windows Chrome(B-3 Multi-client は両方同時)
+- ネットワーク: 自宅 WiFi(PC は Ethernet、iPhone は WiFi、同一 LAN セグメント `192.168.11.x`)
+- 実施者: 操作員(iPhone 実機)+ Windows Claude Code エージェント(伴走)
+
+### 実施シナリオと結果
+| シナリオ | 結果 | メモ |
+|---|---|---|
+| Smoke(`gateway --mock` + 実スマホで PASSING / lap / 音声) | ✅ | 大型表示 / Lap List / ★ ハイライト全部表示。最初に Defender Firewall inbound block でハマり、admin PowerShell で `New-NetFirewallRule -Profile Any -Program gateway.exe` を 1 行実行して復旧 → #99 |
+| iOS Safari Speech 初回 unlock + 発話 | ⚠ | 🔊 ボタン unlock + 連続発話は OK。ただし `19.486秒` を **「いちまんきゅうせんよんひゃくはちじゅうろくびょう」(= 19,486 秒 / 5h24m)** と読み上げる致命的な発話崩壊 → #98 |
+| Multi-client(スマホ + PC ブラウザ) | ✅ | iPhone(ponder=1) + Windows Chrome(ponder=2)で交互に発声。fan-out + per-client transponder filter が同時 2 client で正常動作 |
+| Sleep/Wake(iPhone ロック → 1〜2 分待機 → 解除) | ⚠ | 自動復帰せず「PASSING を待機中」表示で固定。`/settings` でトランスポンダーを再保存すると復旧。`docs/test-strategy.md` §6.1 が予測していた iOS suspension での silent socket kill → #100 |
+| 実 WiFi drop(機内モード ON 30s → OFF) | ✅ | 機内モード OFF 後すぐに WS 自動再接続 + 音声再開。Sleep/Wake と対比して **wsClient の reconnect ロジック自体は正常**、iOS 側で onclose 発火するか否かが分岐点と確定(#100 仮説 #1 補強) |
+| Soak 1h | ✅ | PR #96 で実施済み: ws_mb_delta=+4.8% / handle_delta=+0.2% / reconnects=0 |
+| `/admin` 手動 E2E(login + 1 項目変更 + logout) | ✅ | passphrase 入力・upstream.host を架空値に変更・保存トースト「保存しました(1 項目変更)」表示・元値に戻して再保存・ログアウト、すべて想定どおり。**ただし副作用として #101 を露呈**(下記 USB 起動参照) |
+| USB 起動(F:\AMB_RC_Lap_Timer に展開) | ❌ | `os.Executable()` 経由の baseDir 解決は OK / config.json も USB から読まれる ✅ だが、**`/admin` POST が resolved 絶対パスを焼き込んでいたため `logs.dir` / `records.dir` が `C:\…\dist\AMB_RC_Lap_Timer\logs` を指したまま** USB 起動。USB 配下にログが書かれない → #101 **β-2 ブロッカー** |
+| USB 抜き挿し(USB 上で起動 → 物理抜去 → 再挿入) | ⚠ | プロセスは抜去後もクラッシュせず継続 ✅(EXE のメモリマップ生存)。ただし #101 でログが USB 配下に無いため、本来の fail-soft I/O 検証(警告のみで停止しない確認)は **#101 修正後に再実施** |
+
+### 観察
+- **致命度の高い 2 件**: #100(Sleep/Wake)と #101(USB 移植性)。前者はフィールド利用での実用性、後者は USB 配布の正当性に直結。**両方とも β-2 現地までに修正したい**。
+- **音声フォーマット #98**: 当初「`.` を「テン」と読む」程度の認識だったが、実機検証で **5 桁整数として読まれる** ことが判明。lap タイム発話が事実上使えない状態で、これも β-2 までに直したい。
+- **WS reconnect の切り分け**: B-4 ❌ vs B-5 ✅ の対比で、`wsClient` の reconnect 自体は正しく動くこと、iOS suspension のときだけ socket が silent kill される点が確定。修正範囲を `transport/wsClient.ts` の visibility 検出に絞れる。
+- **B-6 が #101 を露呈**した連鎖: `/admin` 単体は ✅ 動作だが、saved config が C: 絶対パスを焼き込み → 続く B-7 でその config が USB に持ち込まれて致命傷。シナリオ順序が悪かったわけではなく、**`/admin` 経由で 1 度でも保存すると config.json が汚染される**事実を発見できたこと自体が β-1 の成果。
+- **Defender Firewall #99**: PC が Public プロファイルだとダイアログが出ずに silent block。家庭の WiFi ルータ配下では Public 分類になりがちで、`packaging/README.txt` の現状の説明では復旧手順が無い。
+- **harness の所要時間**: B-1 から B-8 まで実機セッションで約 60 分(うち Firewall 復旧調査 15 分 + 派生 Issue 起票時間が断続的に挟まる)。Soak 1h は PR #96 で済ませてあるので合計 2 時間で β-1 完了。
+
+### 自動収集ログ
+- Soak 1h: PR #96 で残置の `dist\fieldtest-runs\soak-20260507-072048\`
+- 本セッションのゲートウェイログ: PC 側 `dist\AMB_RC_Lap_Timer\logs\gateway.log`(USB 側 F: は #101 の影響で書かれていない)
+- 実施者ローカルの観察メモ・Safari スクリーンショット等(コミットしない、個人保管)
+
+### 派生 Issue
+- **#98** [feat(speech): lap 発話を「19秒49」形式に](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/98)`.` を含めない / 2 桁精度 / iOS Safari TTS の整数結合回避
+- **#99** [docs(packaging): README.txt に Defender Firewall ダイアログが出ないケースの復旧手順を追加](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/99)
+- **#100** [fix(web): iPhone Safari Sleep/Wake 後に LapList が "待機中" のまま固まる](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/100) — **β-2 までに修正**
+- **#101** [fix(admin): /admin/api/config POST が resolved 絶対パスを config.json に焼き込み USB 移植性を壊す](https://github.com/hama-jp/AMB_RC_Lap_Timer/issues/101) — **β-2 ブロッカー**
+
+### 次セッションで再検証したい項目
+- B-2 Speech: #98 修正後に「じゅうきゅうびょうよんじゅうきゅう」と聞こえるか実機確認
+- B-4 Sleep/Wake: #100 修正後に画面ロック → 解除で表示自動復帰するか
+- B-7 USB 起動: #101 修正後に F:\AMB_RC_Lap_Timer\logs\ に gateway.log が書かれるか
+- B-8 USB 抜き挿し: #101 修正後に「ログ書込みエラー警告のみで停止しない」fail-soft I/O が働くか
+
+### 任意項目
+- mDNS `*.local` 解決: 本セッションでは未実施
+- FAT32 USB: 本セッションでは USB のフォーマット未確認(NTFS と推定)
+
 ## 2026-05-07 β-1 自宅 dry-run 先行 (Win 11 build 26200.8246 / Soak 1h のみ)
 
 β-1 本番(自宅 9 シナリオ一括)に入る前の Soak 1h **先行検証**。`docs/test-strategy.md` §6.3 で β-1 に組み込まれている Soak だけを切り出し、PR #95 マージ後の main(`fc56fe4`)で 60 分回した結果を残す。残りの 8 シナリオ(iOS Speech / Sleep-Wake / 実 WiFi drop / Multi-client / `/admin` 手動 E2E / USB 起動 / USB 抜き挿し / SmartScreen)は β-1 本番セッションでまとめて実施する。
@@ -182,6 +235,7 @@
 ---
 
 ## 4. 改訂履歴
+- v0.1.4 (2026-05-07): §3 に β-1 自宅 dry-run 本番セッション(残 8 シナリオ)を追記。✅ 4 件 / ⚠ 3 件 / ❌ 1 件、派生 Issue #98 / #99 / #100 / #101 を起票。**β-2 現地までに #100 と #101 を修正**(後者は USB 配布の正当性に直結)。
 - v0.1.3 (2026-05-07): §3 に β-1 自宅 dry-run の Soak 1h 先行検証を追記。Soak 単独で +4.8% / +0.2% / 0 disconnects と green、β-1 本番(残り 8 シナリオ)に進む根拠を残す。
 - v0.1.2 (2026-05-06): §2.1 に β-1 自宅 dry-run 専用テンプレートを追加。`docs/test-strategy.md` §6.3 の β-1 / β-2 分割に対応。シナリオ 9 件を固定し、AMB 実機なしで完結するセッション用に整える。
 - v0.1.1 (2026-05-06): §3 に α-1 セッション(自走分)を追記。Soak は 10 分短縮版で実施。
