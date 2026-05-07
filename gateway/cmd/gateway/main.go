@@ -106,8 +106,10 @@ func run(fl cliFlags) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	cfg = cfg.ResolvePaths(baseDir)
 
+	// CLI overrides apply to non-path fields so they can land on Raw and
+	// Resolved without divergence. Apply BEFORE ResolvePaths so the raw
+	// snapshot we hand to /admin reflects what's actually running.
 	if fl.upstream != "" {
 		host, port, err := splitHostPort(fl.upstream)
 		if err != nil {
@@ -123,6 +125,13 @@ func run(fl cliFlags) error {
 	if fl.replaySpeed != "" {
 		cfg.Replay.Speed = fl.replaySpeed
 	}
+
+	// Snapshot the raw cfg before ResolvePaths so /admin/api/config GET /
+	// POST round-trips with relative paths intact (Issue #101). The
+	// resolved version is what runtime path access (logging, recorder)
+	// uses below.
+	rawCfg := cfg
+	cfg = cfg.ResolvePaths(baseDir)
 
 	if err := os.MkdirAll(cfg.Logging.Dir, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "mkdir logs warning: %v\n", err)
@@ -235,7 +244,7 @@ func run(fl cliFlags) error {
 			)
 		}
 	}
-	httpServer.SetAdminConfigState(cfg, fl.configPath, hooks)
+	httpServer.SetAdminConfigState(rawCfg, cfg, fl.configPath, hooks)
 
 	// Recorder, optional.
 	var rec *recorder.Recorder
