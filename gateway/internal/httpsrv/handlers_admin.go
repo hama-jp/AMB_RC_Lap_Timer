@@ -49,11 +49,24 @@ type ApplyHooks struct {
 // SetAdminConfigState once at startup. Hot-reading configState through an
 // atomic pointer means the handler does not need to hold any lock during
 // the JSON encode/decode work.
+//
+// Raw vs Resolved (Issue #101): the handler must round-trip the config
+// without mutating relative paths into absolute ones. Raw is what came off
+// disk (and what GET returns / POST writes back); Resolved is the same
+// shape with `logging.dir` / `records.dir` etc. expanded against the EXE
+// directory and is reserved for future hooks that need real filesystem
+// targets at runtime. Today no hook reads paths so Resolved is unused at
+// request time, but the field exists so the handler can grow into runtime
+// log-rotation reconfiguration etc. without another signature change.
 type configState struct {
-	// Cfg is the in-memory truth. After a successful POST it holds the
-	// caller's submission (post-validation, post-resolution if main.go
-	// applied ResolvePaths before storing).
-	Cfg config.Config
+	// Raw is the as-loaded config: relative paths stay relative. POST
+	// writes Raw to disk and the SPA's GET reads it back, so a USB
+	// distribution survives a /admin save without C:\... paths leaking
+	// into config.json (docs/architecture.md §4.4 portable operation).
+	Raw config.Config
+	// Resolved has Raw.ResolvePaths(baseDir) applied. Reserved for live
+	// path-aware hooks; today the handler does not consult it.
+	Resolved config.Config
 	// Path is the absolute path to config.json. POST writes to
 	// Path + ".tmp.<unix-nano>" then renames.
 	Path string
@@ -65,11 +78,16 @@ type configState struct {
 // /admin/api/config handlers. Must be called once at startup; subsequent
 // calls atomically swap the pointer (main.go does not need this, but tests
 // re-use one Server across cases).
-func (s *Server) SetAdminConfigState(cfg config.Config, path string, hooks ApplyHooks) {
+//
+// raw is the as-loaded config (relative paths preserved); resolved is the
+// same with ResolvePaths applied. The handler returns / persists raw and
+// holds resolved for future hooks.
+func (s *Server) SetAdminConfigState(raw, resolved config.Config, path string, hooks ApplyHooks) {
 	s.adminConfig.Store(&configState{
-		Cfg:   cfg,
-		Path:  path,
-		Hooks: hooks,
+		Raw:      raw,
+		Resolved: resolved,
+		Path:     path,
+		Hooks:    hooks,
 	})
 }
 
@@ -99,7 +117,7 @@ func (s *Server) handleAdminConfigGet(w http.ResponseWriter, _ *http.Request) {
 		})
 		return
 	}
-	writeJSON(w, http.StatusOK, st.Cfg)
+	writeJSON(w, http.StatusOK, st.Raw)
 }
 
 // adminConfigPostResp is the success response shape (200). Errors use the
@@ -141,7 +159,10 @@ func (s *Server) handleAdminConfigPost(w http.ResponseWriter, r *http.Request) {
 	// What actually changed? Atomic write happens regardless (so admin can
 	// re-save the same values to bump mtime), but the "applied" /
 	// "requires_restart" buckets list only the diff.
-	changed := diffConfig(st.Cfg, newCfg)
+	//
+	// Diff against Raw — the request body shares Raw's relative-path shape
+	// because the SPA fetched it from a previous GET that returned Raw.
+	changed := diffConfig(st.Raw, newCfg)
 
 	if err := writeConfigAtomic(st.Path, newCfg); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
@@ -151,20 +172,25 @@ func (s *Server) handleAdminConfigPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Live applies — only for fields that have a hook AND actually changed.
-	applyHooks(st.Hooks, st.Cfg, newCfg, changed)
+	// Hooks read non-path fields (host, port, reconnect, hub limits) so
+	// passing Raw is semantically identical to passing Resolved here.
+	applyHooks(st.Hooks, st.Raw, newCfg, changed)
 
 	// Swap the in-memory snapshot LAST so concurrent GETs never observe a
-	// state where disk and memory disagree.
+	// state where disk and memory disagree. Resolved is preserved as-is —
+	// none of today's hooks rotate paths at runtime; if that lands later,
+	// re-apply ResolvePaths here against the original baseDir.
 	s.adminConfig.Store(&configState{
-		Cfg:   newCfg,
-		Path:  st.Path,
-		Hooks: st.Hooks,
+		Raw:      newCfg,
+		Resolved: st.Resolved,
+		Path:     st.Path,
+		Hooks:    st.Hooks,
 	})
 
 	// Audit log: pass through the per-field old→new pairs the diff produced.
 	auditFields := make(map[string]logging.ChangeValue, len(changed))
 	for _, p := range changed {
-		auditFields[p] = changeValueFor(p, st.Cfg, newCfg)
+		auditFields[p] = changeValueFor(p, st.Raw, newCfg)
 	}
 	s.auth.audit.LogChange(clientIP(r), auditFields)
 

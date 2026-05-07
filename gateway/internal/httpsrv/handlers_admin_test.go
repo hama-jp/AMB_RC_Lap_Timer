@@ -74,7 +74,10 @@ func newAdminTestServer(t *testing.T, initial config.Config) *adminTestServer {
 			reconnects <- [3]any{initialMs, maxMs, jr}
 		},
 	}
-	s.SetAdminConfigState(initial, cfgPath, hooks)
+	// Tests don't need a distinct Resolved view — they exercise GET / POST /
+	// hooks which read non-path fields. Pass initial as both raw and
+	// resolved; the regression tests below validate the Raw path explicitly.
+	s.SetAdminConfigState(initial, initial, cfgPath, hooks)
 
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
@@ -290,6 +293,93 @@ func TestAdminConfigPost_NoChanges_HooksNotFired(t *testing.T) {
 	if len(at.upstreamCh) != 0 || len(at.hubLimits) != 0 || len(at.reconnects) != 0 {
 		t.Errorf("hooks fired without diff: u=%d h=%d r=%d",
 			len(at.upstreamCh), len(at.hubLimits), len(at.reconnects))
+	}
+}
+
+// Regression for Issue #101: a successful POST must round-trip
+// `logging.dir` / `records.dir` as the relative strings the operator
+// loaded, NOT as the baseDir-resolved absolute paths. Pre-fix, the
+// /admin handler was given the resolved Config and wrote it back,
+// baking C:\... into config.json and breaking USB portability.
+func TestAdminConfigPost_PreservesRelativePaths(t *testing.T) {
+	at := newAdminTestServer(t, goodCfg())
+	c := adminLogin(t, at.srv)
+
+	// Change a non-path field; logging.dir / records.dir stay at the
+	// relative defaults (./logs / ./records).
+	updated := goodCfg()
+	updated.Upstream.Host = "10.0.0.42"
+
+	body, _ := json.Marshal(updated)
+	req, _ := http.NewRequest(http.MethodPost, at.srv.URL+"/admin/api/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status: got %d want 200, body=%s", resp.StatusCode, b)
+	}
+
+	written, err := os.ReadFile(at.cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved config.Config
+	if err := json.Unmarshal(written, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved.Logging.Dir != "./logs" {
+		t.Errorf("logging.dir baked: got %q want %q", saved.Logging.Dir, "./logs")
+	}
+	if saved.Records.Dir != "./records" {
+		t.Errorf("records.dir baked: got %q want %q", saved.Records.Dir, "./records")
+	}
+}
+
+// Regression for Issue #101: GET must return the as-loaded view (Raw),
+// not the runtime Resolved view. Otherwise the SPA reads absolute paths,
+// echoes them on POST, and config.json gets baked.
+func TestAdminConfigGet_ReturnsRawNotResolved(t *testing.T) {
+	dir := t.TempDir()
+	audit, err := logging.NewAuditWriter(logging.AuditOptions{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = audit.Close() })
+	h := hub.New(zap.NewNop(), 10, 4)
+	t.Cleanup(h.Close)
+
+	raw := goodCfg() // ./logs, ./records
+	resolved := raw  // simulate ResolvePaths having moved them under a fake baseDir
+	resolved.Logging.Dir = `C:\fake\base\logs`
+	resolved.Records.Dir = `C:\fake\base\records`
+
+	cfg := Config{Version: "test", AdminPassphrase: testPassphrase, AdminAudit: audit}
+	s := New(cfg, h, zap.NewNop())
+	s.SetAdminConfigState(raw, resolved, filepath.Join(dir, "config.json"), ApplyHooks{})
+	ts := httptest.NewServer(s.Handler())
+	t.Cleanup(ts.Close)
+
+	client := adminLogin(t, ts)
+	resp, err := client.Get(ts.URL + "/admin/api/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got config.Config
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Logging.Dir != "./logs" {
+		t.Errorf("GET returned resolved logging.dir: got %q want %q",
+			got.Logging.Dir, "./logs")
+	}
+	if got.Records.Dir != "./records" {
+		t.Errorf("GET returned resolved records.dir: got %q want %q",
+			got.Records.Dir, "./records")
 	}
 }
 
