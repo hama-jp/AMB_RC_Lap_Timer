@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
 
-import { formatLapTime } from '../laps/formatLapTime';
 import type { PassingEntry, PassingsStore } from '../laps/passingsStore';
 import { loadSettings, SETTINGS_CHANGED_EVENT } from '../settings/settingsStore';
+import { formatLapTimeForSpeech } from './formatLapTimeForSpeech';
 import type { SpeechController } from './speechController';
 
 export interface SpeechCoordinatorProps {
@@ -45,7 +45,11 @@ export function SpeechCoordinator({ store, controller }: SpeechCoordinatorProps)
         return;
       }
 
-      controller.speak(`${formatLapTime(topEntry.lapTimeUs)}秒`);
+      const utterance = formatLapTimeForSpeech(topEntry.lapTimeUs);
+      if (utterance === '') {
+        return;
+      }
+      controller.speak(utterance);
     });
   }, [controller, store]);
 
