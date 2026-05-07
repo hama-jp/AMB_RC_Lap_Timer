@@ -123,7 +123,7 @@
 - **handles 推移**: 124 → 126(+0.2%)。fd / goroutine の累積なし。
 - **threads / cpu**: 8 → 7(安定)、cpu_seconds 累計 0.03 → 0.16(60 分で約 0.13 sec、~0.004% CPU)。アイドル状態の gateway が想定どおりの軽さで動いていることを確認。
 - **recorder events**: connect=1, frame=601, shutdown=1。disconnect=0 で **clean exit**(PR #80 race fix と PR #88 の `shutdown` event 区別が期待どおり作動)。
-- **mock のフレーム rate**: 601 frames / 60 min ≈ 1 frame / 6 sec。PR #91 の multi-transponder mock(4 ponders rotating)が想定 rate で安定動作。
+- **mock のフレーム rate**: 601 frames / 60 min ≈ 1 frame / 6 sec。PR #91 の multi-transponder mock(3 ponders rotating)が想定 rate で安定動作(3 ponder × 18 sec lap ÷ 3 = 6 sec stride、観測と一致)。
 - **gateway.stderr.log は空**: 60 分間にエラーログなし。
 - **soak-monitor.csv の `established` / `listen` 列が空**: `Get-NetTCPConnection -OwningProcess` がユーザ権限で gateway の所有接続を列挙できていない様子。α-1(10 分版)でも同じ症状で、Soak 判定そのものには影響なし。改善は別 Issue 候補(本 PR では起票せず追跡メモのみ)。
 
