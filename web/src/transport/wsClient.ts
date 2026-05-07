@@ -32,6 +32,21 @@ export type WsTimeoutHandle = unknown;
 export type WsSetTimeout = (handler: () => void, delayMs: number) => WsTimeoutHandle;
 export type WsClearTimeout = (handle: WsTimeoutHandle) => void;
 
+/**
+ * Hook into the page's visibility lifecycle so the WS client can force a
+ * reconnect after iOS Safari silently kills the socket during screen lock
+ * (Issue #100). Defaults to a `document.visibilityState`-backed
+ * implementation in browsers; tests inject a fake.
+ */
+export interface WsVisibility {
+  /** True iff the page is currently backgrounded / locked / hidden. */
+  isHidden(): boolean;
+  /** Subscribe to every hidden↔visible transition. Returns an unsubscribe. */
+  subscribe(handler: () => void): () => void;
+  /** Monotonic-enough ms timestamp; the threshold check uses this. */
+  now(): number;
+}
+
 export interface WsClientOptions {
   readonly url?: string;
   readonly initialBackoffMs?: number;
@@ -41,12 +56,24 @@ export interface WsClientOptions {
   readonly setTimeout?: WsSetTimeout;
   readonly clearTimeout?: WsClearTimeout;
   readonly WebSocket?: WsSocketConstructor;
+  /**
+   * Force a reconnect when the page returns from a long hidden window.
+   * Pass `null` to opt out. Defaults to a browser-backed provider when
+   * `document` is available, otherwise `null` (Node / test envs).
+   */
+  readonly visibility?: WsVisibility | null;
+  /**
+   * Minimum hidden duration (ms) that triggers a force-reconnect on
+   * return-to-visible. Short tab flips are ignored. Default 5000ms.
+   */
+  readonly visibilityReconnectThresholdMs?: number;
 }
 
 const DEFAULT_URL = '/ws';
 const DEFAULT_INITIAL_BACKOFF_MS = 1_000;
 const DEFAULT_MAX_BACKOFF_MS = 30_000;
 const DEFAULT_JITTER_RATIO = 0.2;
+const DEFAULT_VISIBILITY_RECONNECT_THRESHOLD_MS = 5_000;
 
 export function createWsClient(opts: WsClientOptions = {}): WsClient {
   const url = resolveWsUrl(opts.url ?? DEFAULT_URL);
@@ -57,6 +84,10 @@ export function createWsClient(opts: WsClientOptions = {}): WsClient {
   const setTimer = opts.setTimeout ?? defaultSetTimeout;
   const clearTimer = opts.clearTimeout ?? defaultClearTimeout;
   const WebSocketCtor = resolveWebSocketCtor(opts.WebSocket);
+  const visibility = opts.visibility === undefined ? defaultVisibilityProvider() : opts.visibility;
+  const visibilityThresholdMs = nonNegative(
+    opts.visibilityReconnectThresholdMs ?? DEFAULT_VISIBILITY_RECONNECT_THRESHOLD_MS,
+  );
 
   const messageHandlers = new Set<WsMessageHandler>();
   const stateHandlers = new Set<WsStateHandler>();
@@ -66,6 +97,9 @@ export function createWsClient(opts: WsClientOptions = {}): WsClient {
   let reconnectAttempt = 0;
   let generation = 0;
   let manualDisconnect = false;
+  let active = false; // true between connect() and disconnect()
+  let lastHiddenAt: number | null = null;
+  let unsubscribeVisibility: (() => void) | null = null;
 
   function emitState(state: WsState): void {
     for (const handler of [...stateHandlers]) {
@@ -85,6 +119,63 @@ export function createWsClient(opts: WsClientOptions = {}): WsClient {
     }
     clearTimer(reconnectTimer.handle);
     reconnectTimer = null;
+  }
+
+  // Force-close any current socket and immediately re-open. Used by the
+  // visibility hook on return-from-long-sleep — iOS Safari can leave the
+  // existing handle in a "looks open, actually dead" state without firing
+  // onclose, so we proactively replace it (Issue #100).
+  function forceReconnect(): void {
+    const stale = socket;
+    if (stale !== null) {
+      // Bump generation so the dying socket's late onclose / onerror /
+      // onmessage events are ignored — we already know it's gone.
+      generation += 1;
+      socket = null;
+      try {
+        stale.close();
+      } catch {
+        // Ignored: already-dead handles can throw on close in some envs.
+      }
+    }
+    clearReconnectTimer();
+    reconnectAttempt = 0;
+    openSocket();
+  }
+
+  function setupVisibility(): void {
+    if (visibility === null || unsubscribeVisibility !== null) {
+      return;
+    }
+    unsubscribeVisibility = visibility.subscribe(() => {
+      if (!active) {
+        return;
+      }
+      if (visibility.isHidden()) {
+        if (lastHiddenAt === null) {
+          lastHiddenAt = visibility.now();
+        }
+        return;
+      }
+      // Now visible.
+      const wasHidden = lastHiddenAt;
+      lastHiddenAt = null;
+      if (wasHidden === null) {
+        return;
+      }
+      if (visibility.now() - wasHidden < visibilityThresholdMs) {
+        return; // Quick tab flip — don't disturb a working socket.
+      }
+      forceReconnect();
+    });
+  }
+
+  function teardownVisibility(): void {
+    if (unsubscribeVisibility !== null) {
+      unsubscribeVisibility();
+      unsubscribeVisibility = null;
+    }
+    lastHiddenAt = null;
   }
 
   function openSocket(): void {
@@ -157,6 +248,8 @@ export function createWsClient(opts: WsClientOptions = {}): WsClient {
   return {
     connect(): void {
       manualDisconnect = false;
+      active = true;
+      setupVisibility();
       clearReconnectTimer();
       if (socket !== null) {
         return;
@@ -167,6 +260,8 @@ export function createWsClient(opts: WsClientOptions = {}): WsClient {
 
     disconnect(): void {
       manualDisconnect = true;
+      active = false;
+      teardownVisibility();
       clearReconnectTimer();
       reconnectAttempt = 0;
 
@@ -270,3 +365,20 @@ const defaultSetTimeout: WsSetTimeout = (handler, delayMs) =>
 const defaultClearTimeout: WsClearTimeout = (handle) => {
   globalThis.clearTimeout(handle as ReturnType<typeof globalThis.setTimeout>);
 };
+
+function defaultVisibilityProvider(): WsVisibility | null {
+  // SSR / Node / unit tests get a no-op provider so behaviour matches
+  // the pre-#100 client. Browser callers get the real document-backed
+  // implementation. Tests opt in via the `visibility` option.
+  if (typeof document === 'undefined') {
+    return null;
+  }
+  return {
+    isHidden: () => document.visibilityState === 'hidden',
+    subscribe(handler) {
+      document.addEventListener('visibilitychange', handler);
+      return () => document.removeEventListener('visibilitychange', handler);
+    },
+    now: () => Date.now(),
+  };
+}

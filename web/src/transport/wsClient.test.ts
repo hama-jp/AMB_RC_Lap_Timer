@@ -298,4 +298,182 @@ describe('createWsClient', () => {
       attempt: 0,
     });
   });
+
+  // Issue #100 — iPhone Safari can silently kill the socket while the page
+  // is hidden (locked). On return-to-visible the WS handle "looks open" but
+  // is actually dead and onclose never fires, so the user is stuck on the
+  // empty "PASSING を待機中" screen until they re-trigger anything that
+  // pokes the WS. We force-reconnect on visible-after-long-hidden.
+  describe('visibility reconnect (#100)', () => {
+    class FakeVisibility {
+      private hiddenFlag = false;
+      private nowMs = 0;
+      private readonly handlers = new Set<() => void>();
+
+      isHidden(): boolean {
+        return this.hiddenFlag;
+      }
+      subscribe(handler: () => void): () => void {
+        this.handlers.add(handler);
+        return () => {
+          this.handlers.delete(handler);
+        };
+      }
+      now(): number {
+        return this.nowMs;
+      }
+      // Test hooks:
+      hide(): void {
+        this.hiddenFlag = true;
+        this.fire();
+      }
+      show(): void {
+        this.hiddenFlag = false;
+        this.fire();
+      }
+      advance(ms: number): void {
+        this.nowMs += ms;
+      }
+      get subscriberCount(): number {
+        return this.handlers.size;
+      }
+      private fire(): void {
+        for (const h of [...this.handlers]) {
+          h();
+        }
+      }
+    }
+
+    it('force-reconnects when visible after a long hidden window', () => {
+      const visibility = new FakeVisibility();
+      const client = createTestClient({
+        visibility,
+        visibilityReconnectThresholdMs: 5_000,
+        jitterRatio: 0,
+      });
+      client.connect();
+      const before = lastInstance();
+      before.open();
+      const states: WsState[] = [];
+      client.onStateChange((s) => states.push(s));
+
+      // 30 sec hidden — well past the threshold.
+      visibility.hide();
+      visibility.advance(30_000);
+      visibility.show();
+
+      // The previous socket was force-closed and a fresh one opened.
+      expect(before.closeCount).toBe(1);
+      expect(FakeWebSocket.instances).toHaveLength(2);
+      // First state we observe after subscribe is the new connecting.
+      expect(states[0]).toEqual({ kind: 'connecting' });
+    });
+
+    it('does NOT reconnect on a quick tab flip below the threshold', () => {
+      const visibility = new FakeVisibility();
+      const client = createTestClient({
+        visibility,
+        visibilityReconnectThresholdMs: 5_000,
+        jitterRatio: 0,
+      });
+      client.connect();
+      const before = lastInstance();
+      before.open();
+
+      visibility.hide();
+      visibility.advance(1_000); // only 1s hidden
+      visibility.show();
+
+      expect(before.closeCount).toBe(0);
+      expect(FakeWebSocket.instances).toHaveLength(1);
+    });
+
+    it('ignores visibility events that arrive before connect()', () => {
+      const visibility = new FakeVisibility();
+      createTestClient({
+        visibility,
+        visibilityReconnectThresholdMs: 5_000,
+      });
+      // Subscribe happens on connect(); since we never connected, no
+      // socket should be created by visibility traffic.
+      visibility.hide();
+      visibility.advance(60_000);
+      visibility.show();
+
+      expect(FakeWebSocket.instances).toHaveLength(0);
+    });
+
+    it('unsubscribes from visibility on disconnect()', () => {
+      const visibility = new FakeVisibility();
+      const client = createTestClient({
+        visibility,
+        visibilityReconnectThresholdMs: 5_000,
+      });
+      client.connect();
+      expect(visibility.subscriberCount).toBe(1);
+
+      client.disconnect();
+      expect(visibility.subscriberCount).toBe(0);
+
+      // Late visibility events after disconnect must not spawn sockets.
+      visibility.hide();
+      visibility.advance(30_000);
+      visibility.show();
+      expect(FakeWebSocket.instances).toHaveLength(1); // only the original
+    });
+
+    it('does not reconnect when no hidden→visible transition happened', () => {
+      const visibility = new FakeVisibility();
+      const client = createTestClient({
+        visibility,
+        visibilityReconnectThresholdMs: 5_000,
+      });
+      client.connect();
+      const before = lastInstance();
+      before.open();
+
+      // Fire a visibilitychange while still visible — no-op.
+      visibility.show();
+
+      expect(before.closeCount).toBe(0);
+      expect(FakeWebSocket.instances).toHaveLength(1);
+    });
+
+    it('handles multiple hide/show cycles independently', () => {
+      const visibility = new FakeVisibility();
+      const client = createTestClient({
+        visibility,
+        visibilityReconnectThresholdMs: 5_000,
+      });
+      client.connect();
+      const first = lastInstance();
+      first.open();
+
+      // Cycle 1: long hidden → reconnect
+      visibility.hide();
+      visibility.advance(10_000);
+      visibility.show();
+      expect(FakeWebSocket.instances).toHaveLength(2);
+      lastInstance().open();
+
+      // Cycle 2: short hidden → no reconnect
+      visibility.hide();
+      visibility.advance(2_000);
+      visibility.show();
+      expect(FakeWebSocket.instances).toHaveLength(2);
+
+      // Cycle 3: long again → reconnect
+      visibility.hide();
+      visibility.advance(60_000);
+      visibility.show();
+      expect(FakeWebSocket.instances).toHaveLength(3);
+    });
+
+    it('opt-out: passing visibility:null disables the hook', () => {
+      const client = createTestClient({ visibility: null });
+      client.connect();
+      // No throw, no extra sockets, no listeners. Smoke check.
+      expect(FakeWebSocket.instances).toHaveLength(1);
+    });
+  });
 });
