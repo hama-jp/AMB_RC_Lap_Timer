@@ -1,0 +1,182 @@
+name: Release
+
+# Triggered by `git tag vX.Y.Z` (or `vX.Y.Z-rc<n>`) followed by
+# `git push origin vX.Y.Z`. The job builds the SPA, cross-compiles
+# `gateway.exe` for Windows amd64, bundles the operator-facing files,
+# zips the bundle, computes a SHA-256, and creates a GitHub Release with
+# the artifacts attached.
+#
+# Pre-release detection: tag matching `vX.Y.0-rc<n>` is published as a
+# pre-release; everything else (including `v0.1.1`) is published as a
+# stable release. See docs/release.md for the operator-facing runbook.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  # Required for softprops/action-gh-release to create the Release.
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Mirror CI versions exactly so the artifact a contributor reproduces
+      # locally with `scripts/build.ps1` matches what we ship.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.20.x'
+          cache: true
+          cache-dependency-path: gateway/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: 'web/.nvmrc'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # ── 1. SPA build ────────────────────────────────────────────────
+      - name: Build SPA
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      # ── 2. Copy web/dist/* → gateway/internal/webassets/dist/ ──────
+      # Wipes the embed dir except .gitkeep to avoid stale artifacts. The
+      # `.gitkeep` survives so `go:embed all:dist` keeps a non-empty target
+      # across clean checkouts (matches scripts/build.ps1 §2 behaviour).
+      - name: Embed SPA bundle into gateway
+        run: |
+          set -euo pipefail
+          embed=gateway/internal/webassets/dist
+          find "$embed" -mindepth 1 ! -name '.gitkeep' -delete
+          cp -R web/dist/. "$embed"/
+
+      # ── 3. Cross-compile gateway.exe ────────────────────────────────
+      - name: Cross-compile gateway.exe (Windows amd64)
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: '0'
+        working-directory: gateway
+        run: |
+          set -euo pipefail
+          mkdir -p ../dist/AMB_RC_Lap_Timer
+          go build \
+            -trimpath \
+            -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" \
+            -o ../dist/AMB_RC_Lap_Timer/gateway.exe \
+            ./cmd/gateway
+          ls -lh ../dist/AMB_RC_Lap_Timer/gateway.exe
+
+      # ── 4. Bundle operator-facing files ─────────────────────────────
+      # Same set scripts/build.ps1 §4 emits: config.example.json (so the
+      # gateway's first-launch ensureConfigFile bootstrap finds a template
+      # next to the EXE) and README.txt (the printable user manual).
+      - name: Bundle config.example.json + README.txt
+        run: |
+          set -euo pipefail
+          cp gateway/config.example.json   dist/AMB_RC_Lap_Timer/config.example.json
+          cp packaging/README.txt          dist/AMB_RC_Lap_Timer/README.txt
+          ls -lh dist/AMB_RC_Lap_Timer/
+
+      # ── 5. ZIP the bundle ───────────────────────────────────────────
+      # Single top-level folder inside the ZIP so users can drag it onto a
+      # USB stick without first creating a wrapper directory.
+      - name: Create release ZIP
+        id: zip
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          zip_name="AMB_RC_Lap_Timer-${tag}.zip"
+          (cd dist && zip -r "../${zip_name}" AMB_RC_Lap_Timer/)
+          ls -lh "${zip_name}"
+          echo "zip_name=${zip_name}" >> "$GITHUB_OUTPUT"
+
+      # ── 6. SHA-256 ──────────────────────────────────────────────────
+      - name: Compute SHA-256
+        id: sha
+        run: |
+          set -euo pipefail
+          zip_name="${{ steps.zip.outputs.zip_name }}"
+          sha_name="${zip_name}.sha256"
+          sha256sum "${zip_name}" > "${sha_name}"
+          cat "${sha_name}"
+          echo "sha_name=${sha_name}" >> "$GITHUB_OUTPUT"
+
+      # ── 7. Build the prepended release notes section ────────────────
+      # Operators see this BEFORE GitHub's auto-generated PR / commit list,
+      # which is appended below it via `generate_release_notes: true`.
+      - name: Compose release notes prefix
+        id: notes
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          zip_name="${{ steps.zip.outputs.zip_name }}"
+          sha_line=$(cut -d ' ' -f 1 "${{ steps.sha.outputs.sha_name }}")
+          cat > release-notes-prefix.md <<EOF
+          ## ${tag}
+
+          個人練習用 AMB RC ラップタイマー Web アプリのリリース。
+
+          ### 同梱物(\`${zip_name}\`)
+          - \`gateway.exe\`(Windows amd64、SmartScreen 初回承認要)
+          - \`config.example.json\`(設定ひな型)
+          - \`README.txt\`(現地ガイド、印刷可)
+
+          ### 動作要件
+          - Windows 8.1 以上、ゲートウェイ PC として
+          - LAN 内のスマホ / タブレット(Web Speech API 対応のモダンブラウザ)
+          - AMB P3 デコーダーが同 LAN にいること
+
+          ### 起動方法
+          ZIP を任意の場所(USB 直下推奨)に展開 → \`config.json\` で AMB の IP を編集 → \`gateway.exe\` をダブルクリック → スマホで \`http://<このPCのIP>:8080/\`。詳細は同梱の \`README.txt\`。
+
+          ### 検証済みの動作環境
+          - Windows 11 Home build 26200(β-1 / β-2 検証機)
+          - iPhone Safari(\`docs/field-test-log.md\` β-1 全 9 シナリオ ✅)
+
+          ### SHA-256
+          \`\`\`
+          ${sha_line}  ${zip_name}
+          \`\`\`
+          EOF
+          echo "prefix_path=release-notes-prefix.md" >> "$GITHUB_OUTPUT"
+
+      # ── 8. Decide pre-release flag ──────────────────────────────────
+      # `vX.Y.0-rc<n>` is a release-candidate (the rc-runs we use during
+      # the β-2 prep window). `vX.Y.Z` (no `-rc`) is stable. Anything
+      # else (e.g., `v0.1.1-beta`) defaults to stable too — we don't ship
+      # named pre-release channels other than rc.
+      - name: Determine pre-release flag
+        id: prerelease
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if [[ "${tag}" =~ ^v[0-9]+\.[0-9]+\.0-rc[0-9]+$ ]]; then
+            echo "value=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── 9. Publish the Release ──────────────────────────────────────
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          body_path: ${{ steps.notes.outputs.prefix_path }}
+          generate_release_notes: true
+          prerelease: ${{ steps.prerelease.outputs.value == 'true' }}
+          fail_on_unmatched_files: true
+          files: |
+            ${{ steps.zip.outputs.zip_name }}
+            ${{ steps.sha.outputs.sha_name }}

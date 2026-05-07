@@ -97,6 +97,7 @@ Refs #3
 | `docs/ci-cd.md` | GitHub Actions の構成と運用 |
 | `docs/test-strategy.md` | Mock/Replay/Record の運用とテスト方針 |
 | `docs/field-test-log.md` | Field Test(実 LAN)の実施記録 |
+| `docs/release.md` | リリース手順:タグ前チェックリスト + 公開後 verify(`release.yml` の operator 向け runbook) |
 | `docs/roadmap.md` | 実装フェーズの順序と各フェーズの責務(採取先行) |
 | `docs/decisions/` (将来) | ADR を増やす場合の置き場 |
 
