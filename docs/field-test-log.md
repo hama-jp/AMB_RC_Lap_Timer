@@ -2,7 +2,7 @@
 
 `docs/test-strategy.md` §6 で定義した Field Test(実 LAN ✕ 実機なし)の **実施記録**を残す場所。CI で自動化しないため、ここに書いておかないと「現地で何が起きたか」が後から辿れなくなる。
 
-> Status: **Draft v0.1.2**(α-1 完了 / β-1 自宅 dry-run 用テンプレート追加)
+> Status: **Draft v0.1.3**(α-1 完了 / β-1 dry-run の Soak 1h を先行検証)
 
 ---
 
@@ -102,6 +102,47 @@
 
 > ここから下に実施セッションを **新しいものほど上**(逆時系列)で追記していく。
 
+## 2026-05-07 β-1 自宅 dry-run 先行 (Win 11 build 26200.8246 / Soak 1h のみ)
+
+β-1 本番(自宅 9 シナリオ一括)に入る前の Soak 1h **先行検証**。`docs/test-strategy.md` §6.3 で β-1 に組み込まれている Soak だけを切り出し、PR #95 マージ後の main(`fc56fe4`)で 60 分回した結果を残す。残りの 8 シナリオ(iOS Speech / Sleep-Wake / 実 WiFi drop / Multi-client / `/admin` 手動 E2E / USB 起動 / USB 抜き挿し / SmartScreen)は β-1 本番セッションでまとめて実施する。
+
+### 環境
+- ゲートウェイ: `dev-fc56fe4`(commit `fc56fe4`、`scripts\build.ps1` でその場ビルド)
+- ホスト PC: Windows 11 Home, build 10.0.26200.8246
+- クライアント: なし(`ws-recorder` ヘッドレス × 1、`gateway --mock` を localhost で消費)
+- ネットワーク: localhost のみ(LAN・無線は β-1 本番)
+- 実施者: Windows Claude Code エージェント(`.\scripts\fieldtest-soak.ps1 -DurationMin 60 -LeaveArtifacts` を一回起動)
+
+### 実施シナリオと結果
+| シナリオ | 結果 | メモ |
+|---|---|---|
+| Soak 1h(`scripts\fieldtest-soak.ps1 -DurationMin 60`) | ✅ | ws_mb_delta=+4.8%, handle_delta=+0.2%, reconnects=0 |
+
+### 観察
+- **ws_mb 推移**: 9.81 MB → 10.31 MB(5 分頭/末平均 +4.8%)。閾値 +20% の 1/4 程度で leak の徴候なし。線形外挿でも 8 時間で +20% 程度に収まる見込みで、Soak 8h を回す根拠になる。
+- **handles 推移**: 124 → 126(+0.2%)。fd / goroutine の累積なし。
+- **threads / cpu**: 8 → 7(安定)、cpu_seconds 累計 0.03 → 0.16(60 分で約 0.13 sec、~0.004% CPU)。アイドル状態の gateway が想定どおりの軽さで動いていることを確認。
+- **recorder events**: connect=1, frame=601, shutdown=1。disconnect=0 で **clean exit**(PR #80 race fix と PR #88 の `shutdown` event 区別が期待どおり作動)。
+- **mock のフレーム rate**: 601 frames / 60 min ≈ 1 frame / 6 sec。PR #91 の multi-transponder mock(4 ponders rotating)が想定 rate で安定動作。
+- **gateway.stderr.log は空**: 60 分間にエラーログなし。
+- **soak-monitor.csv の `established` / `listen` 列が空**: `Get-NetTCPConnection -OwningProcess` がユーザ権限で gateway の所有接続を列挙できていない様子。α-1(10 分版)でも同じ症状で、Soak 判定そのものには影響なし。改善は別 Issue 候補(本 PR では起票せず追跡メモのみ)。
+
+### 自動収集ログ
+- `dist\fieldtest-runs\soak-20260507-072048\` (`-LeaveArtifacts` 指定で残置 — gateway logs / soak-monitor.csv 120 行 / recorder.csv 603 行)
+- 実施者ローカル `soak-60m.log`(コミットしない — 個人 PC のパスとタイムスタンプを含む)
+
+### 派生 Issue / PR
+- なし(harness の不具合は検出されず。`established` / `listen` 列の空白は β-1 本番の所感と合わせて起票判断する)
+
+### 未実施(β-1 本番セッションに持ち越し)
+- iOS Safari Speech 初回 unlock + 発話
+- Multi-client(スマホ + タブレット同時)
+- Sleep/Wake(スマホロック → 復帰)
+- 実 WiFi drop(機内モード or ルータ電源 OFF/ON)
+- `/admin` 手動 E2E(login + 1 項目変更 + logout)
+- USB 起動 / USB 抜き挿し
+- (任意)mDNS / FAT32 USB
+
 ## 2026-05-06 α-1 (Win 11 build 26200.8246 / 自走 — 人手シナリオなし)
 
 ### 環境
@@ -141,6 +182,7 @@
 ---
 
 ## 4. 改訂履歴
+- v0.1.3 (2026-05-07): §3 に β-1 自宅 dry-run の Soak 1h 先行検証を追記。Soak 単独で +4.8% / +0.2% / 0 disconnects と green、β-1 本番(残り 8 シナリオ)に進む根拠を残す。
 - v0.1.2 (2026-05-06): §2.1 に β-1 自宅 dry-run 専用テンプレートを追加。`docs/test-strategy.md` §6.3 の β-1 / β-2 分割に対応。シナリオ 9 件を固定し、AMB 実機なしで完結するセッション用に整える。
 - v0.1.1 (2026-05-06): §3 に α-1 セッション(自走分)を追記。Soak は 10 分短縮版で実施。
 - v0.1 (2026-05-06): 初版。フォーマット骨格とテンプレートのみ。初回 Field Test α 実施前。
