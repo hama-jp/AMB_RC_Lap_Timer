@@ -104,8 +104,9 @@ try {
 # config.example.json next to it for first-launch bootstrap (main.go
 # ensureConfigFile), and the README is the printed user manual.
 $bundleSources = @(
-    @{ Src = (Join-Path $gatewayDir 'config.example.json'); Dst = (Join-Path $OutDir 'config.example.json') }
-    @{ Src = (Join-Path $repoRoot 'packaging\README.txt');   Dst = (Join-Path $OutDir 'README.txt')           }
+    @{ Src = (Join-Path $gatewayDir 'config.example.json');     Dst = (Join-Path $OutDir 'config.example.json') }
+    @{ Src = (Join-Path $repoRoot 'packaging\README.txt');       Dst = (Join-Path $OutDir 'README.txt')           }
+    @{ Src = (Join-Path $repoRoot 'packaging\setup-firewall.bat'); Dst = (Join-Path $OutDir 'setup-firewall.bat') }
 )
 foreach ($b in $bundleSources) {
     if (-not (Test-Path $b.Src)) {
