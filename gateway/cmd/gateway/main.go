@@ -32,6 +32,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mdp/qrterminal/v3"
 	"go.uber.org/zap"
 
 	"github.com/hama-jp/AMB_RC_Lap_Timer/gateway/internal/config"
@@ -196,6 +197,8 @@ func run(fl cliFlags) error {
 		zap.String("listen", cfg.Listen),
 		zap.String("logs", cfg.Logging.Dir),
 		zap.String("records", cfg.Records.Dir))
+
+	announceListenURLs(cfg.Listen, log.Logger, os.Stdout)
 
 	// Hub for WS fan-out.
 	h := hub.New(log.Logger,
@@ -456,6 +459,109 @@ func loadConfig(path string) (config.Config, error) {
 		return config.Defaults(), nil
 	}
 	return cfg, err
+}
+
+// drawQR renders a half-block QR for content into w. Indirected through a
+// package var so tests can swap a deterministic stub instead of depending on
+// the qrterminal output format.
+var drawQR = func(content string, w io.Writer) {
+	qrterminal.GenerateHalfBlock(content, qrterminal.L, w)
+}
+
+// announceListenURLs prints a phone-friendly URL banner — including a
+// scannable QR for each URL — so the operator does not have to type the
+// address into a phone (README.txt §6, Issue #117). Output is in three
+// channels: a structured zap.Info("listen urls", ...) so the URLs land in
+// gateway.log, the textual banner, and the QR codes — all to `out` (stdout
+// in production), which is where the field-test operator is actually
+// looking.
+func announceListenURLs(listenAddr string, log *zap.Logger, out io.Writer) {
+	urls, warn := formatListenURLs(listenAddr, lanIPv4s())
+	if warn != "" {
+		log.Warn(warn, zap.String("listen", listenAddr))
+	}
+	if len(urls) == 0 {
+		return
+	}
+	log.Info("listen urls", zap.Strings("urls", urls))
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "  === Open this URL on a phone / tablet on the same LAN ===")
+	fmt.Fprintln(out, "  (point the phone camera at the QR; or type the URL manually)")
+	for _, u := range urls {
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, "    ", u)
+		drawQR(u, out)
+	}
+	fmt.Fprintln(out, "  =========================================================")
+	fmt.Fprintln(out)
+}
+
+// formatListenURLs is the pure half of announceListenURLs: given the listen
+// address and the discovered LAN IPv4s, return the URLs to advertise plus an
+// optional warning. Pure so it can be unit-tested without poking real NICs.
+//
+//   - bind-all listen ("", "0.0.0.0", "::")  -> one URL per LAN IP
+//   - loopback listen (127.0.0.1)            -> one loopback URL + warn
+//   - specific host                          -> one URL using that host
+//   - malformed listen                       -> empty + warn
+func formatListenURLs(listenAddr string, lanIPs []string) (urls []string, warn string) {
+	host, portStr, err := net.SplitHostPort(listenAddr)
+	if err != nil {
+		return nil, fmt.Sprintf("listen address %q is malformed; cannot advertise a phone URL", listenAddr)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port <= 0 {
+		return nil, fmt.Sprintf("listen address %q has invalid port; cannot advertise a phone URL", listenAddr)
+	}
+
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		if len(lanIPs) == 0 {
+			return nil, "no LAN IPv4 address found; phones on the LAN may not be able to connect"
+		}
+		urls = make([]string, len(lanIPs))
+		for i, ip := range lanIPs {
+			urls[i] = fmt.Sprintf("http://%s:%d/", ip, port)
+		}
+		return urls, ""
+	}
+
+	url := fmt.Sprintf("http://%s:%d/", host, port)
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return []string{url}, fmt.Sprintf("listen=%s is loopback-only; phones on the LAN cannot connect", listenAddr)
+	}
+	return []string{url}, ""
+}
+
+// lanIPv4s returns non-loopback, non-link-local IPv4 addresses on UP
+// interfaces, in NIC enumeration order. Returns nil if enumeration fails —
+// callers treat that the same as "no LAN address" and skip the banner.
+func lanIPv4s() []string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip := ipnet.IP.To4()
+			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			out = append(out, ip.String())
+		}
+	}
+	return out
 }
 
 func splitHostPort(s string) (string, int, error) {
