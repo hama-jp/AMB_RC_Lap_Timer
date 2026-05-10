@@ -80,12 +80,16 @@ jobs:
       # ── 4. Bundle operator-facing files ─────────────────────────────
       # Same set scripts/build.ps1 §4 emits: config.example.json (so the
       # gateway's first-launch ensureConfigFile bootstrap finds a template
-      # next to the EXE) and README.txt (the printable user manual).
-      - name: Bundle config.example.json + README.txt
+      # next to the EXE), README.txt (the printable user manual), and
+      # setup-firewall.bat (double-clickable Defender Firewall rule
+      # installer that resolves the gateway.exe path from %~dp0 — works
+      # on any drive letter).
+      - name: Bundle operator-facing files
         run: |
           set -euo pipefail
-          cp gateway/config.example.json   dist/AMB_RC_Lap_Timer/config.example.json
-          cp packaging/README.txt          dist/AMB_RC_Lap_Timer/README.txt
+          cp gateway/config.example.json    dist/AMB_RC_Lap_Timer/config.example.json
+          cp packaging/README.txt           dist/AMB_RC_Lap_Timer/README.txt
+          cp packaging/setup-firewall.bat   dist/AMB_RC_Lap_Timer/setup-firewall.bat
           ls -lh dist/AMB_RC_Lap_Timer/
 
       # ── 5. ZIP the bundle ───────────────────────────────────────────
@@ -131,6 +135,7 @@ jobs:
           - \`gateway.exe\`(Windows amd64、SmartScreen 初回承認要)
           - \`config.example.json\`(設定ひな型)
           - \`README.txt\`(現地ガイド、印刷可)
+          - \`setup-firewall.bat\`(初回起動時に **ダブルクリック** で Defender Firewall ルールを追加)
 
           ### 動作要件
           - Windows 8.1 以上、ゲートウェイ PC として

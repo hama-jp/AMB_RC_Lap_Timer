@@ -28,31 +28,33 @@ AMB P3 デコーダーに対応した、個人練習用のラップタイマー 
        }
 
 3. 初回だけ、Windows Defender Firewall に gateway.exe の通信を許可します。
-   PC のネットワークが「パブリック」プロファイルだとダイアログが出ずに
-   無言でブロックされるため、PowerShell から先に許可ルールを足しておく
-   方法が確実です。
+   同梱の setup-firewall.bat を **ダブルクリック** するだけで完了します:
 
-   スタート右クリック → 「ターミナル(管理者)」または
-   「PowerShell(管理者)」を起動し、下の 1 行を実行(-Program のパスは
-   自分の gateway.exe の場所に書き換える):
+       setup-firewall.bat
+        → UAC ダイアログ「このアプリがデバイスに変更を加えることを許可しますか?」
+           で「はい」を押す
+        → Firewall ルール追加 → 「OK: ルール追加完了」と表示されたら
+           何かキーを押してウィンドウを閉じる
 
-       New-NetFirewallRule -DisplayName 'AMB RC Lap Timer (gateway.exe)' `
+   - .bat は同じフォルダの gateway.exe をパス自動検出で許可します。
+     ドライブレター(C:, F:, D: 等)が変わっても編集不要です。
+   - 別の PC に持ち込んだら、その PC で 1 回だけ再ダブルクリックが
+     必要です(Defender Firewall は絶対パスでルールを管理するため)。
+   - 何度実行しても同じ DisplayName のルールを置き換えるだけなので
+     副作用はありません。
+   - 後で削除したいとき(管理者 PowerShell で):
+       Remove-NetFirewallRule -DisplayName "AMB RC Lap Timer (gateway.exe)"
+
+   別パターン:
+   - PC のネットワークが「プライベート」の場合、初回起動時に
+     Defender Firewall ダイアログが自動で出ます。その場合は
+     「プライベートネットワーク」にチェックを入れて「アクセスを
+     許可する」を押せば、setup-firewall.bat の実行は不要です。
+   - .bat を使わずに自分でルールを足したい場合は、管理者 PowerShell で:
+
+       New-NetFirewallRule -DisplayName "AMB RC Lap Timer (gateway.exe)" `
            -Direction Inbound -Action Allow -Profile Any `
-           -Program 'F:\AMB_RC_Lap_Timer\gateway.exe' -Protocol TCP
-
-   - USB から起動する場合のパス例: F:\AMB_RC_Lap_Timer\gateway.exe
-   - デスクトップに置いた場合のパス例:
-     C:\Users\<ユーザ名>\Desktop\AMB_RC_Lap_Timer\gateway.exe
-   - 別の PC に持ち込んだら、その PC で 1 回だけ再実行が必要です
-     (ドライブレターやフォルダが変わるため)。
-   - 同名ルールが既にあるとエラーになりますが無害です。
-   - 後で削除したいとき:
-       Remove-NetFirewallRule -DisplayName 'AMB RC Lap Timer (gateway.exe)'
-
-   別パターン: PC のネットワークが「プライベート」の場合、初回起動時に
-   Defender Firewall ダイアログが自動で出ます。その場合は
-   「プライベートネットワーク」にチェックを入れて「アクセスを許可する」
-   を押せば、上の PowerShell コマンドは不要です。
+           -Program "<このフォルダ>\gateway.exe" -Protocol TCP
 
 4. gateway.exe をダブルクリックして起動します。
    初回だけ Microsoft Defender SmartScreen の警告が出ます:
@@ -124,6 +126,7 @@ AMB P3 デコーダーに対応した、個人練習用のラップタイマー 
   gateway.exe ............ 本体(ダブルクリックで起動)
   config.example.json .... 設定のひな型(初回コピー元、編集しない)
   config.json ............ あなたの設定(初回起動時に自動作成)
+  setup-firewall.bat ..... Firewall 許可ルール追加用(初回起動前にダブルクリック)
   README.txt ............. このファイル
   logs/ .................. ゲートウェイのログ(自動作成、自動ローテーション)
   records/ ............... --record オプション利用時の録画(通常は空)
