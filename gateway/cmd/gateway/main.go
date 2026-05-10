@@ -32,6 +32,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mdp/qrterminal/v3"
 	"go.uber.org/zap"
 
 	"github.com/hama-jp/AMB_RC_Lap_Timer/gateway/internal/config"
@@ -460,11 +461,20 @@ func loadConfig(path string) (config.Config, error) {
 	return cfg, err
 }
 
-// announceListenURLs prints a phone-friendly URL banner so the operator does
-// not have to run `ipconfig` separately (README.txt §6, Issue #117). Output is
-// in two channels: a structured zap.Info("listen urls", ...) so the URLs land
-// in gateway.log, and a plain banner to `out` (stdout in production) since
-// that's where the field-test operator is actually looking.
+// drawQR renders a half-block QR for content into w. Indirected through a
+// package var so tests can swap a deterministic stub instead of depending on
+// the qrterminal output format.
+var drawQR = func(content string, w io.Writer) {
+	qrterminal.GenerateHalfBlock(content, qrterminal.L, w)
+}
+
+// announceListenURLs prints a phone-friendly URL banner — including a
+// scannable QR for each URL — so the operator does not have to type the
+// address into a phone (README.txt §6, Issue #117). Output is in three
+// channels: a structured zap.Info("listen urls", ...) so the URLs land in
+// gateway.log, the textual banner, and the QR codes — all to `out` (stdout
+// in production), which is where the field-test operator is actually
+// looking.
 func announceListenURLs(listenAddr string, log *zap.Logger, out io.Writer) {
 	urls, warn := formatListenURLs(listenAddr, lanIPv4s())
 	if warn != "" {
@@ -476,8 +486,11 @@ func announceListenURLs(listenAddr string, log *zap.Logger, out io.Writer) {
 	log.Info("listen urls", zap.Strings("urls", urls))
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "  === Open this URL on a phone / tablet on the same LAN ===")
+	fmt.Fprintln(out, "  (point the phone camera at the QR; or type the URL manually)")
 	for _, u := range urls {
+		fmt.Fprintln(out)
 		fmt.Fprintln(out, "    ", u)
+		drawQR(u, out)
 	}
 	fmt.Fprintln(out, "  =========================================================")
 	fmt.Fprintln(out)

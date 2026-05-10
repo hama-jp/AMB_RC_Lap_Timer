@@ -2,11 +2,25 @@ package main
 
 import (
 	"bytes"
+	"fmt"
+	"io"
 	"strings"
 	"testing"
 
 	"go.uber.org/zap"
 )
+
+// stubQR replaces the real QR renderer for the duration of a test. Returns a
+// teardown that restores the previous drawQR. Output format is deterministic
+// (`[QR:<content>]`) so we can assert exactly which URLs got encoded.
+func stubQR(t *testing.T) {
+	t.Helper()
+	prev := drawQR
+	drawQR = func(content string, w io.Writer) {
+		fmt.Fprintf(w, "[QR:%s]\n", content)
+	}
+	t.Cleanup(func() { drawQR = prev })
+}
 
 func TestFormatListenURLs(t *testing.T) {
 	t.Parallel()
@@ -104,10 +118,12 @@ func TestFormatListenURLs(t *testing.T) {
 	}
 }
 
-func TestAnnounceListenURLs_BannerIncludesURL(t *testing.T) {
+func TestAnnounceListenURLs_BannerIncludesURLAndQR(t *testing.T) {
 	// announceListenURLs calls the real lanIPv4s() so we can't pin exact
-	// output, but for a host-pinned listen the URL is deterministic and the
-	// banner must contain it. This is the smoke test for the stdout banner.
+	// output for bind-all, but for a host-pinned listen the URL is
+	// deterministic and the banner must contain it. drawQR is stubbed so we
+	// can also assert the same URL was passed to the QR renderer.
+	stubQR(t)
 	var buf bytes.Buffer
 	announceListenURLs("192.168.1.42:8080", zap.NewNop(), &buf)
 	got := buf.String()
@@ -117,20 +133,29 @@ func TestAnnounceListenURLs_BannerIncludesURL(t *testing.T) {
 	if !strings.Contains(got, "Open this URL on a phone") {
 		t.Fatalf("banner missing the operator hint; got:\n%s", got)
 	}
+	if !strings.Contains(got, "[QR:http://192.168.1.42:8080/]") {
+		t.Fatalf("banner missing QR for URL; got:\n%s", got)
+	}
 }
 
-func TestAnnounceListenURLs_LoopbackSilentBanner(t *testing.T) {
-	// Loopback listen still emits the URL (operator may have set it on
+func TestAnnounceListenURLs_LoopbackEmitsURLAndQR(t *testing.T) {
+	// Loopback listen still emits the URL + QR (operator may have set it on
 	// purpose for a local test), but the warning must be visible. We verify
 	// the banner still prints — the warn goes through zap, not stdout.
+	stubQR(t)
 	var buf bytes.Buffer
 	announceListenURLs("127.0.0.1:8080", zap.NewNop(), &buf)
-	if !strings.Contains(buf.String(), "http://127.0.0.1:8080/") {
-		t.Fatalf("loopback URL missing from banner; got:\n%s", buf.String())
+	got := buf.String()
+	if !strings.Contains(got, "http://127.0.0.1:8080/") {
+		t.Fatalf("loopback URL missing from banner; got:\n%s", got)
+	}
+	if !strings.Contains(got, "[QR:http://127.0.0.1:8080/]") {
+		t.Fatalf("loopback URL missing QR; got:\n%s", got)
 	}
 }
 
 func TestAnnounceListenURLs_MalformedSkipsBanner(t *testing.T) {
+	stubQR(t)
 	var buf bytes.Buffer
 	announceListenURLs("not-a-listen-addr", zap.NewNop(), &buf)
 	if buf.Len() != 0 {
